@@ -1,5 +1,6 @@
 import type { Assets, Img } from './assets';
-import { isWall, type Level, type Npc, type Thing } from './level';
+import type { LiveThing } from './game/state';
+import { isWall, type Level, type Npc } from './level';
 import { drawMeerkat, type Anim, type Dir } from './meerkat';
 import { drawText, GLYPH_ADVANCE, LINE_HEIGHT, textWidth, wrap } from './pixelfont';
 
@@ -23,14 +24,22 @@ export interface Actor {
 
 export interface Bubble { text: string; x: number; y: number }
 
-export interface Particle { kind: 'dust' | 'twinkle'; x: number; y: number; t: number }
+export interface Particle { kind: 'dust' | 'twinkle' | 'spark'; x: number; y: number; t: number; color?: string }
+
+/** What the renderer needs to know about the live game. */
+export interface Scene {
+  things: LiveThing[];
+  barsOpen: boolean;
+  /** gates that the player may pass (they sink into the ground) */
+  openGates: Set<LiveThing>;
+}
 
 export class WorldRenderer {
   constructor(private a: Assets, private level: Level) {}
 
   /** Draw floors, walls, things and actors depth-sorted by row. Coordinates are world pixels. */
   /** Returns speech bubbles to draw on top (in world pixels: centre x, bottom y). */
-  draw(ctx: CanvasRenderingContext2D, time: number, actors: Actor[], particles: Particle[], player: Actor): Bubble[] {
+  draw(ctx: CanvasRenderingContext2D, time: number, scene: Scene, actors: Actor[], particles: Particle[], player: Actor): Bubble[] {
     const { level } = this;
     // --- floor pass ---
     for (let y = 0; y < level.height; y++) {
@@ -43,7 +52,7 @@ export class WorldRenderer {
     // --- depth pass: row by row, walls/blocks first, then things and actors standing in that row ---
     const byRow = new Map<number, (() => void)[]>();
     const add = (row: number, fn: () => void) => { if (!byRow.has(row)) byRow.set(row, []); byRow.get(row)!.push(fn); };
-    for (const th of level.things) add(th.y, () => this.thing(ctx, th, time));
+    for (const th of scene.things) if (!th.gone) add(th.y, () => this.thing(ctx, th, time, scene));
     for (const ac of actors) add(Math.floor(ac.y + 0.5), () => this.actor(ctx, ac));
     for (const p of particles) add(Math.floor(p.y + 0.5), () => this.particle(ctx, p));
     for (let y = 0; y < level.height; y++) {
@@ -118,8 +127,12 @@ export class WorldRenderer {
     }
   }
 
-  private thing(ctx: CanvasRenderingContext2D, th: Thing, time: number) {
-    const px = th.x * TILE, py = th.y * TILE;
+  private thing(ctx: CanvasRenderingContext2D, th: LiveThing, time: number, scene: Scene) {
+    let px = th.x * TILE, py = th.y * TILE;
+    if (th.slideT !== undefined && th.slideT < 1) {
+      px = Math.round((th.fromX! + (th.x - th.fromX!) * th.slideT) * TILE);
+      py = Math.round((th.fromY! + (th.y - th.fromY!) * th.slideT) * TILE);
+    }
     const bob = Math.round(Math.sin(time * 3 + th.x + th.y) * 1.5);
     switch (th.kind) {
       case 'coin': {
@@ -146,10 +159,20 @@ export class WorldRenderer {
         break;
       }
       case 'gate': {
-        // a keyhole block, raised like a short wall
+        // a keyhole block, raised like a short wall; it sinks into the sand for a meerkat with the key
+        const open = scene.openGates.has(th);
         ctx.fillStyle = 'rgba(40,20,10,0.3)';
         ctx.fillRect(px + 1, py + 12, 14, 4);
-        ctx.drawImage(this.a.gates[th.color], px, py - 4);
+        if (open) {
+          ctx.save();
+          ctx.beginPath(); ctx.rect(px, py - 4, TILE, TILE); ctx.clip();
+          ctx.globalAlpha = 0.85;
+          ctx.drawImage(this.a.gates[th.color], px, py + 7);
+          ctx.restore();
+          if (Math.floor(time * 4) % 2) { ctx.fillStyle = '#fff4d6'; ctx.fillRect(px + 7, py - 1, 2, 2); }
+        } else {
+          ctx.drawImage(this.a.gates[th.color], px, py - 4);
+        }
         break;
       }
       case 'crate': {
@@ -165,7 +188,7 @@ export class WorldRenderer {
         }
         break;
       }
-      case 'bars': this.bars(ctx, px, py); break;
+      case 'bars': this.bars(ctx, px, py - (scene.barsOpen ? LIFT + 6 : 0), scene.barsOpen); break;
       case 'exit': {
         ctx.drawImage(this.a.tileset, EXIT.x, EXIT.y, TILE, TILE, px, py, TILE, TILE);
         const f = Math.floor(time * 10) % 12;
@@ -179,8 +202,9 @@ export class WorldRenderer {
     }
   }
 
-  private bars(ctx: CanvasRenderingContext2D, px: number, py: number) {
+  private bars(ctx: CanvasRenderingContext2D, px: number, py: number, open: boolean) {
     const top = py - LIFT;
+    ctx.globalAlpha = open ? 0.5 : 1;
     ctx.fillStyle = '#2b1a12';
     ctx.fillRect(px, top + 1, TILE, 2);
     ctx.fillRect(px, py + 7, TILE, 2);
@@ -190,6 +214,7 @@ export class WorldRenderer {
       ctx.fillStyle = '#8a8fa3';
       ctx.fillRect(px + i + 1, top + 1, 1, LIFT + TILE - 3);
     }
+    ctx.globalAlpha = 1;
   }
 
   private shadow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
@@ -226,6 +251,14 @@ export class WorldRenderer {
   }
 
   private particle(ctx: CanvasRenderingContext2D, p: Particle) {
+    if (p.kind === 'spark') {
+      // star-power trail: little fading sparks
+      ctx.globalAlpha = Math.max(0, 1 - p.t * 2);
+      ctx.fillStyle = p.color ?? '#ffd24a';
+      ctx.fillRect(Math.round(p.x * TILE + TILE / 2 - 1), Math.round(p.y * TILE + TILE - 8 - p.t * 10), 2, 2);
+      ctx.globalAlpha = 1;
+      return;
+    }
     const img = p.kind === 'dust' ? this.a.dust : this.a.twinkle;
     const frames = img.width / 32;
     const f = Math.floor(p.t * 14);

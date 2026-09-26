@@ -5,11 +5,24 @@ You are a meerkat. Find the exit! Collect coins and gems, find keys for the colo
 push movable walls, don't stay too long in the red zones (or it's jail!), and listen to the
 other meerkats' jokes.
 
-## Status: visual preview
+## How to play
 
-The current build is a **visual preview**: a small maze where you can walk around and see the art,
-animations, fog of war and the map. The game rules (picking things up, keys, gates, jail, timers),
-multiplayer and the level editor come next.
+| On the map | What it does |
+|---|---|
+| Orange coin | +1 coin |
+| Blue gem | worth 5 coins |
+| Coloured key | yours for the whole level; walk through gates of the same colour |
+| Coloured block with a keyhole | a gate: only meerkats with the matching key get through |
+| Crate with arrows | push it (if there is free floor behind it) |
+| Red star | 20 seconds of double speed and no fog |
+| Red dotted zone | you may stay 5 seconds; any longer and you go to jail |
+| Jail | the door opens after 10 seconds |
+| Exit | you win! |
+
+## Status
+
+Single-player rules are done. Next: more levels from the paper maze, the level editor, multiplayer
+with a join code (friends can bail you out of jail) and the desktop app.
 
 ## Running
 
@@ -17,9 +30,10 @@ multiplayer and the level editor come next.
 npm install
 npm run dev            # open the printed URL
 npm run build:single   # -> dist/index.html, one self-contained file you can double-click
+npm test               # game rule tests
 ```
 
-Controls: arrows / WASD to walk, **M** for the map. On touch screens, hold your finger on the side
+Controls: arrows / WASD to walk, **M** for the map, **R** to restart. On touch screens, hold your finger on the side
 of the screen you want to walk towards; tap **MAP** for the map.
 Add `?fog=0` to the URL to switch the fog off (for testing).
 

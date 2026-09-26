@@ -3,7 +3,7 @@ import type { Img } from './assets';
 // Sprite sheet rows (see tools/make-meerkat.mjs)
 export const FRAME_W = 16, FRAME_H = 24;
 export type Dir = 'down' | 'up' | 'left' | 'right';
-export type Anim = 'idle' | 'walk' | 'sentry';
+export type Anim = 'idle' | 'walk' | 'panic' | 'push' | 'sentry' | 'celebrate' | 'cheer' | 'sad';
 
 const WALK_ROW: Record<Dir, number> = { down: 1, up: 2, left: 3, right: 4 };
 
@@ -11,6 +11,11 @@ const WALK_ROW: Record<Dir, number> = { down: 1, up: 2, left: 3, right: 4 };
 export function meerkatFrame(anim: Anim, dir: Dir, t: number): { row: number; col: number } {
   switch (anim) {
     case 'walk': return { row: WALK_ROW[dir], col: Math.floor(t * 10) % 4 };
+    case 'panic': return { row: WALK_ROW[dir], col: Math.floor(t * 18) % 4 }; // scurry!
+    case 'push': return { row: WALK_ROW[dir], col: Math.floor(t * 5) % 4 }; // slow, heavy steps
+    case 'celebrate': return { row: 6, col: Math.floor(t * 8) % 4 };
+    case 'cheer': return { row: 6, col: 0 };
+    case 'sad': return { row: 7, col: Math.floor(t * 2) % 2 };
     case 'sentry': {
       // look left, centre, right, centre... with a pause on each
       const seq = [0, 1, 1, 2, 1, 1];

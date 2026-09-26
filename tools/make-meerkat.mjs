@@ -4,6 +4,7 @@
 // Sheet layout: frames are 16x24, one animation per row:
 //   0 idle-down (2)   1 walk-down (4)   2 walk-up (4)
 //   3 walk-left (4)   4 walk-right (4)  5 sentry (4)
+//   6 celebrate (4)   7 sad (2)
 import fs from 'node:fs';
 import { PNG } from 'pngjs';
 
@@ -19,6 +20,7 @@ const BASE = {
   n: '#1e1210', // nose
   p: '#d9826b', // ear inner
   t: '#5a3a22', // tail tip
+  q: '#7cc6ff', // tear
 };
 
 // ---------- base poses (16 wide) ----------
@@ -119,7 +121,8 @@ function compose(head, body, legs, { bob = 0, headShift = 0 } = {}) {
     [...line].forEach((ch, x) => { const X = x + dx; if (ch !== '.' && X >= 0 && X < FW) rows[y][X] = ch; });
   });
   put(legs, 20);
-  put(body, 12 + bob);
+  // the first two body rows are the scarf: s = scarf, z = scarf shade (coloured per meerkat)
+  put(body.map((r, i) => (i === 0 ? r.replace(/[bcd]/g, 's') : i === 1 ? r.replace(/[bcd]/g, 'z') : r)), 12 + bob);
   put(head, 0 + bob, headShift);
   return rows.map(r => r.join(''));
 }
@@ -169,6 +172,27 @@ frames.push(frames[3].map(mirror)); // 4 walk right
 const tall = h => { const f = compose(h, FRONT_BODY, LEGS_FRONT.stand); return [...f.slice(1, 22), f[21], f[22], f[23]]; };
 frames.push([tall(lookFront(-1)), tall(FRONT_HEAD), tall(lookFront(1)), tall(FRONT_HEAD)]);
 
+// helpers to paint single pixels onto a finished frame
+const paint = (f, pts) => { const rows = f.map(r => [...r]); for (const [x, y, ch] of pts) if (rows[y]?.[x] !== undefined) rows[y][x] = ch; return rows.map(r => r.join('')); };
+const shiftUp = (f, n) => [...f.slice(n), ...Array(n).fill('.'.repeat(FW))];
+
+// 6 celebrate: arms thrown up (paws next to the ears), then a little hop
+const BODY_NO_PAWS = FRONT_BODY.map((r, i) => (i === 3 ? '..obbbccccbbbo..' : i === 4 ? '...obbccccbbo...' : r));
+const armsUp = f => paint(f, [
+  // arms stretched out and up: shoulder (3,14) to paw (0,10), mirrored on the right
+  [2, 13, 'o'], [2, 12, 'b'], [1, 12, 'o'], [3, 12, 'o'], [1, 11, 'b'], [0, 11, 'o'], [2, 11, 'o'], [0, 10, 'o'], [1, 10, 'd'], [1, 9, 'o'],
+  [13, 13, 'o'], [13, 12, 'b'], [14, 12, 'o'], [12, 12, 'o'], [14, 11, 'b'], [15, 11, 'o'], [13, 11, 'o'], [15, 10, 'o'], [14, 10, 'd'], [14, 9, 'o'],
+]);
+const happyHead = FRONT_HEAD.map((r, i) => (i === 10 ? '.....occcco.....' : i === 11 ? '......oppo......' : r)); // open mouth
+const cheer = armsUp(compose(happyHead, BODY_NO_PAWS, LEGS_FRONT.stand));
+const hop = armsUp(compose(happyHead, BODY_NO_PAWS, ['...obbboobbbo...', '...oddo..oddo...', '...oooo..oooo...', '................']));
+frames.push([cheer, shiftUp(hop, 2), shiftUp(hop, 3), shiftUp(hop, 1)]);
+
+// 7 sad: head droops, eyes shut, a tear rolls down
+const sadHead = FRONT_HEAD.map(r => r.replace(/w/g, 'e'));
+const sad = compose(sadHead, FRONT_BODY, LEGS_FRONT.stand, { bob: 1 });
+frames.push([paint(sad, [[4, 10, 'q']]), paint(sad, [[4, 11, 'q'], [11, 10, 'q']])]);
+
 // ---------- variants ----------
 // Each meerkat wears a scarf (row 12-13 of the frame, i.e. top of the body) in its own colour.
 const VARIANTS = {
@@ -184,16 +208,11 @@ const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), pars
 function render(scarf) {
   const cols = Math.max(...frames.map(r => r.length));
   const png = new PNG({ width: cols * FW, height: frames.length * FH });
+  const colors = { ...Object.fromEntries(Object.entries(BASE).map(([k, v]) => [k, hex(v)])), s: hex(scarf), z: hex(scarf).map(v => Math.round(v * 0.75)) };
   frames.forEach((row, ry) => row.forEach((f, cx) => {
-    // scarf: first 2 rows of the body (bob-aware: find first body row under the head)
-    const scarfRows = new Set();
-    for (let y = 11; y < 16; y++) {
-      if (/o[bc]{2}/.test(f[y]) && f[y].replace(/\./g, '').length <= 6 && scarfRows.size === 0) { scarfRows.add(y); scarfRows.add(y + 1); }
-    }
     f.forEach((line, y) => [...line].forEach((ch, x) => {
       if (ch === '.') return;
-      let col = hex(BASE[ch]);
-      if (scarf && scarfRows.has(y) && ch !== 'o') col = hex(scarf).map((v, i) => (y === Math.min(...scarfRows) ? v : Math.round(v * 0.75)));
+      const col = colors[ch];
       const k = ((ry * FH + y) * png.width + cx * FW + x) * 4;
       png.data[k] = col[0]; png.data[k + 1] = col[1]; png.data[k + 2] = col[2]; png.data[k + 3] = 255;
     }));

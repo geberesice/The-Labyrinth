@@ -25,6 +25,8 @@ export interface Level {
   things: Thing[];
   npcs: Npc[];
   start: { x: number; y: number };
+  /** where you end up when a red zone catches you */
+  jail: { x: number; y: number } | null;
 }
 
 const KEY_CHARS: Record<string, KeyColor> = { y: 'yellow', b: 'blue', r: 'red', g: 'green', o: 'orange', p: 'pink' };
@@ -34,7 +36,7 @@ const KEY_CHARS: Record<string, KeyColor> = { y: 'yellow', b: 'blue', r: 'red', 
  *   #  wall          .  floor          S  start         E  exit
  *   c  coin          $  gem            *  star          t  timed (red) zone
  *   m  movable crate J  jail bars      n  meerkat (text from `texts`, in reading order)
- *   j  jailed meerkat  @  meerkat in a spiky ball
+ *   j  jailed meerkat  @  meerkat in a spiky ball   L  jail cell (where you get locked up)
  *   y b r g o p  key (yellow, blue, red, green, orange, pink)
  *   Y B R G O P  gate of that colour
  */
@@ -42,7 +44,7 @@ export function parseLevel(name: string, rows: string[], texts: string[]): Level
   const height = rows.length, width = rows[0].length;
   rows.forEach((r, i) => { if (r.length !== width) throw new Error(`Row ${i} of ${name} has ${r.length} chars, expected ${width}`); });
   const tiles: Tile[][] = [], timed: boolean[][] = [], things: Thing[] = [], npcs: Npc[] = [];
-  let start = { x: 1, y: 1 }, textIndex = 0, skin = 1;
+  let start = { x: 1, y: 1 }, jail: Level['jail'] = null, textIndex = 0, skin = 1;
   rows.forEach((row, y) => {
     tiles.push([]); timed.push([]);
     [...row].forEach((ch, x) => {
@@ -53,6 +55,7 @@ export function parseLevel(name: string, rows: string[], texts: string[]): Level
       };
       switch (ch) {
         case 'S': start = { x, y }; break;
+        case 'L': jail = { x, y }; break;
         case 'E': things.push({ kind: 'exit', x, y }); break;
         case 'c': things.push({ kind: 'coin', x, y }); break;
         case '$': things.push({ kind: 'gem', x, y }); break;
@@ -68,28 +71,31 @@ export function parseLevel(name: string, rows: string[], texts: string[]): Level
       }
     });
   });
-  return { name, width, height, tiles, timed, things, npcs, start };
+  return { name, width, height, tiles, timed, things, npcs, start, jail };
 }
 
-/** Small show-case maze for the visual preview. */
-export const PREVIEW_LEVEL = parseLevel('Preview', [
-  '##################',
-  '#S..c#.....c#..#E#',
-  '#.##.#.####.#.#.B#',
-  '#.#c...#..$.#.#..#',
-  '#.#.####.####.##.#',
-  '#...#j.#.......#.#',
-  '###.#J##.#####.#c#',
-  '#c..#.@..#y..#...#',
-  '#.#.#.####.#.###.#',
-  '#.#...#..*.#..n..#',
-  '#.###.#t##.#####Y#',
-  '#b..c.#ttt..m...c#',
-  '##################',
+/** First level. Keys unlock in order: yellow key -> yellow gate -> blue key -> blue gate -> exit. */
+export const LEVEL_1 = parseLevel('Meerkat Maze', [
+  '#########################',
+  '#S..c#.....c...#...c.n#E#',
+  '#.##.#.#####.#.#.######B#',
+  '#.#c...#...#.#...#...#..#',
+  '#.#.####.#.#.#####.#.##.#',
+  '#...#jL#.#.$...@.#.#....#',
+  '###.##J#.#########.####.#',
+  '#c.......#..c..*.#...#..#',
+  '#.######.#.#####.#.#.#.##',
+  '#.#....#.Y.....#...#.#..#',
+  '#.#.##.#####.#.#####.##.#',
+  '#...#y.#ttt..#.m....#..c#',
+  '###.####t#####.##b#.#.#.#',
+  '#n....c#t...c.....#.....#',
+  '#########################',
 ], [
   'Help! I stayed in the red zone too long!',
   'Well, that is like the home of the sun!',
   'Yes! Right is always right.',
+  'Well... wrong.',
 ]);
 
 export function isWall(level: Level, x: number, y: number): boolean {

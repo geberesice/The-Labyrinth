@@ -1,5 +1,6 @@
 import { KEY_HUES } from './assets';
 import type { Fog } from './fog';
+import type { LiveThing } from './game/state';
 import { isWall, type Level } from './level';
 
 /**
@@ -8,7 +9,7 @@ import { isWall, type Level } from './level';
  * Only explored parts are drawn.
  */
 export function drawMapView(ctx: CanvasRenderingContext2D, level: Level, fog: Fog, player: { x: number; y: number },
-  w: number, h: number, time: number) {
+  w: number, h: number, time: number, things: LiveThing[]) {
   ctx.fillStyle = 'rgba(20, 12, 28, 0.85)';
   ctx.fillRect(0, 0, w, h);
 
@@ -72,8 +73,8 @@ export function drawMapView(ctx: CanvasRenderingContext2D, level: Level, fog: Fo
     ctx.fillText(text, cx(x), cy(y));
   };
 
-  for (const th of level.things) {
-    if (!seen(th.x, th.y)) continue;
+  for (const th of things) {
+    if (th.gone || !seen(th.x, th.y)) continue;
     switch (th.kind) {
       case 'coin': dot(th.x, th.y, cell * 0.2, '#f39a2b'); break;
       case 'gem': dot(th.x, th.y, cell * 0.22, '#1a78c2'); break;
