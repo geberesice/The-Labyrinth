@@ -73,12 +73,14 @@ class Preview {
 
     // touch / mouse: hold on the screen in the direction you want to walk; tap the MAP button
     const dirFrom = (e: PointerEvent): Dir => {
-      const dx = e.clientX - innerWidth / 2, dy = e.clientY - innerHeight / 2;
+      const r = canvas.getBoundingClientRect();
+      const dx = e.clientX - r.left - r.width / 2, dy = e.clientY - r.top - r.height / 2;
       return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
     };
     canvas.addEventListener('pointerdown', e => {
-      const b = this.mapButton, dpr = devicePixelRatio;
-      const px = e.clientX * dpr, py = e.clientY * dpr;
+      canvas.focus();
+      const b = this.mapButton, dpr = devicePixelRatio, r = canvas.getBoundingClientRect();
+      const px = (e.clientX - r.left) * dpr, py = (e.clientY - r.top) * dpr;
       if (px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h) { this.showMap = !this.showMap; return; }
       if (this.showMap) return;
       canvas.setPointerCapture(e.pointerId);
@@ -145,7 +147,8 @@ class Preview {
 
   resize() {
     const dpr = devicePixelRatio || 1;
-    const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+    const r = canvas.getBoundingClientRect();
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     this.zoom = Math.max(2, Math.round(Math.min(w, h) / (VIEW_TILES * TILE)));
     const bw = Math.ceil(w / this.zoom), bh = Math.ceil(h / this.zoom);
