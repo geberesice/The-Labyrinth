@@ -27,6 +27,8 @@ export interface Level {
   start: { x: number; y: number };
   /** where you end up when a red zone catches you */
   jail: { x: number; y: number } | null;
+  /** how far the meerkat can see (tiles); smaller = darker level */
+  fogRadius?: number;
 }
 
 const KEY_CHARS: Record<string, KeyColor> = { y: 'yellow', b: 'blue', r: 'red', g: 'green', o: 'orange', p: 'pink' };
@@ -40,7 +42,7 @@ const KEY_CHARS: Record<string, KeyColor> = { y: 'yellow', b: 'blue', r: 'red', 
  *   y b r g o p  key (yellow, blue, red, green, orange, pink)
  *   Y B R G O P  gate of that colour
  */
-export function parseLevel(name: string, rows: string[], texts: string[]): Level {
+export function parseLevel(name: string, rows: string[], texts: string[], settings: { fogRadius?: number } = {}): Level {
   const height = rows.length, width = rows[0].length;
   rows.forEach((r, i) => { if (r.length !== width) throw new Error(`Row ${i} of ${name} has ${r.length} chars, expected ${width}`); });
   const tiles: Tile[][] = [], timed: boolean[][] = [], things: Thing[] = [], npcs: Npc[] = [];
@@ -71,7 +73,7 @@ export function parseLevel(name: string, rows: string[], texts: string[]): Level
       }
     });
   });
-  return { name, width, height, tiles, timed, things, npcs, start, jail };
+  return { name, width, height, tiles, timed, things, npcs, start, jail, fogRadius: settings.fogRadius };
 }
 
 /** First level. Keys unlock in order: yellow key -> yellow gate -> blue key -> blue gate -> exit. */
@@ -102,9 +104,35 @@ export const LEVEL_1_DATA = {
   'Well, that is like the home of the sun!',
   'Well... wrong.',
   ],
+  settings: { fogRadius: 5 },
 };
-export const LEVEL_1 = parseLevel(LEVEL_1_DATA.name, LEVEL_1_DATA.rows, LEVEL_1_DATA.texts);
+export const LEVEL_1 = parseLevel(LEVEL_1_DATA.name, LEVEL_1_DATA.rows, LEVEL_1_DATA.texts, LEVEL_1_DATA.settings);
 
 export function isWall(level: Level, x: number, y: number): boolean {
   return x < 0 || y < 0 || x >= level.width || y >= level.height || level.tiles[y][x] === 'wall';
+}
+
+/** Bresenham walk: true if no wall stands between the two tiles (the end tiles themselves may be walls). */
+export function lineOfSight(level: Level, x0: number, y0: number, x1: number, y1: number): boolean {
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy, x = x0, y = y0;
+  while (!(x === x1 && y === y1)) {
+    if ((x !== x0 || y !== y0) && isWall(level, x, y)) return false;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x += sx; }
+    if (e2 <= dx) { err += dx; y += sy; }
+  }
+  return true;
+}
+
+/** How close (in tiles) you must be for a meerkat to talk to you. */
+export const TALK_DISTANCE = 2.3;
+
+/** A meerkat talks when you are within 2 squares and it can see you (no wall in between). */
+export function canTalk(level: Level, px: number, py: number, npc: { x: number; y: number }): boolean {
+  if (Math.hypot(npc.x - px, npc.y - py) > TALK_DISTANCE) return false;
+  const x = Math.round(px), y = Math.round(py);
+  // either direction: a line that only grazes the corner of a wall still counts as seeing each other
+  return lineOfSight(level, x, y, npc.x, npc.y) || lineOfSight(level, npc.x, npc.y, x, y);
 }

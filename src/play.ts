@@ -5,17 +5,19 @@ import {
   addPlayer, createGame, nearBars, playerPos, removePlayer, RULES, step,
   type Dir, type Game, type GameEvent, type LiveThing, type Player,
 } from './game/state';
-import type { Level } from './level';
+import { canTalk, type Level, type Npc } from './level';
 import { toLevel, type LevelData } from './level-format';
 import { drawMapView } from './mapview';
 import type { Anim } from './meerkat';
 import { applySnapshot, snapshot, type HostMsg } from './net/protocol';
 import type { GuestSession, HostSession } from './net/session';
 import { drawText, GLYPH_ADVANCE } from './pixelfont';
+import { recordWin } from './progress';
 import { drawBubble, LIFT, TILE, WorldRenderer, type Actor, type Particle } from './renderer';
 
 const SENTRY_AFTER = 3; // seconds standing still before the meerkat stands up on lookout
 const VIEW_TILES = 11; // about how many tiles fit in the short side of the screen
+const STAR_VIEW_TILES = 16; // with star power the camera zooms out to show more of the way
 const SNAP_EVERY = 0.05; // host sends the game state 20 times a second
 const params = new URLSearchParams(location.search);
 const NO_FOG = params.get('fog') === '0'; // debug: ?fog=0 lights up the whole maze
@@ -40,6 +42,8 @@ export interface PlayOptions {
   net?: NetMode;
   /** a friend's game ended (host left, connection lost) */
   onDisconnect?: (reason: string) => void;
+  /** campaign level: its id (progress is saved when you win) and what comes next */
+  campaign?: { id: string; number: number; total: number; onNext?: () => void };
 }
 
 const KEYS: Record<string, Dir> = {
@@ -73,8 +77,13 @@ export class Play {
   steps = 0;
   shake = 0;
   zoom = 3;
+  /** zoom without the star zoom-out: HUD and text keep this size */
+  baseZoom = 3;
+  /** tiles on the short side of the screen, eased between normal and star view */
+  viewTiles = VIEW_TILES;
   buttons = { map: NO_RECT, back: NO_RECT, sound: NO_RECT, bail: NO_RECT };
-  private chatting = new Set<Actor>();
+  /** meerkats talking to us right now (so each one squeaks once per visit) */
+  private talking = new Set<Npc>();
   private lastZoneSecond = -1;
   private listeners = new AbortController();
   private net: NetMode;
@@ -123,15 +132,15 @@ export class Play {
         for (const guest of this.net.session.guests.values()) this.welcome(guest.peerId);
       }
     }
-    this.fog = new Fog(this.level, 5);
+    this.fog = new Fog(this.level);
     this.meerkats.clear();
     this.npcs = this.level.npcs.map(n => ({
       x: n.x, y: n.y, sheet: this.a.meerkats[n.skin], anim: 'sentry' as Anim, dir: 'down' as Dir, t: n.x * 0.7, npc: n,
     }));
     this.particles = []; this.popups = []; this.confetti = [];
     this.showMap = false;
-    this.fog.update(this.level.start.x, this.level.start.y, NO_FOG);
-    this.chatting.clear();
+    this.fog.update(this.level.start.x, this.level.start.y, { gates: this.gates(), clear: NO_FOG });
+    this.talking.clear();
     audio.music('game');
   }
 
@@ -203,6 +212,8 @@ export class Play {
       if (e.code === 'KeyM' || e.code === 'Tab') { this.showMap = !this.showMap; e.preventDefault(); return; }
       if (e.code === 'KeyN') { audio.toggle(); return; }
       if (this.game.won) {
+        const next = this.opts.campaign?.onNext;
+        if (next && this.canRestart() && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); next(); return; }
         if (this.canRestart() && (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyR')) { this.restart(); e.preventDefault(); }
         return;
       }
@@ -230,7 +241,13 @@ export class Play {
       if (hit(b.back)) { this.opts.onBack(); return; }
       if (hit(b.sound)) { audio.toggle(); return; }
       if (hit(b.bail)) { this.action(); return; }
-      if (this.game.won) { if (this.canRestart() && this.game.time - this.game.wonAt > 1.5) this.restart(); return; }
+      if (this.game.won) {
+        if (this.canRestart() && this.game.time - this.game.wonAt > 1.5) {
+          const next = this.opts.campaign?.onNext;
+          if (next) next(); else this.restart();
+        }
+        return;
+      }
       if (this.showMap) return;
       canvas.setPointerCapture(e.pointerId);
       this.touchDir = dirFrom(e);
@@ -314,12 +331,12 @@ export class Play {
       n.t += dt;
       const dx = mePos.x - n.x, dy = mePos.y - n.y;
       if (g.won) { if (n.anim !== 'celebrate') { n.anim = 'celebrate'; n.dir = 'down'; n.t = Math.random(); } }
-      else if (Math.hypot(dx, dy) < 2.6) {
+      else if (canTalk(this.level, mePos.x, mePos.y, n.npc!)) {
         n.anim = 'idle';
         n.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-        if (!this.chatting.has(n)) { this.chatting.add(n); audio.chatter(); }
+        if (!this.talking.has(n.npc!)) { this.talking.add(n.npc!); audio.chatter(); }
       } else {
-        this.chatting.delete(n);
+        this.talking.delete(n.npc!);
         if (n.anim !== 'sentry') { n.anim = 'sentry'; n.dir = 'down'; }
       }
     }
@@ -345,8 +362,14 @@ export class Play {
     this.shake = Math.max(0, this.shake - dt);
 
     // fog: what we see, plus what friends have explored
-    this.fog.update(mePos.x, mePos.y, NO_FOG || (me?.starLeft ?? 0) > 0);
-    for (const p of g.players) if (p.id !== this.me) { const q = playerPos(p); this.fog.reveal(q.x, q.y); }
+    // star power: ease the camera out (and back in when it ends)
+    const targetView = (me?.starLeft ?? 0) > 0 ? STAR_VIEW_TILES : VIEW_TILES;
+    this.viewTiles += (targetView - this.viewTiles) * Math.min(1, dt * 6);
+    if (Math.abs(targetView - this.viewTiles) < 0.05) this.viewTiles = targetView;
+
+    const gates = this.gates();
+    this.fog.update(mePos.x, mePos.y, { keys: me?.keys, gates, clear: NO_FOG || (me?.starLeft ?? 0) > 0 });
+    for (const p of g.players) if (p.id !== this.me) { const q = playerPos(p); this.fog.reveal(q.x, q.y, { keys: p.keys, gates }); }
   }
 
   /** A message in the middle of the screen area near our meerkat (joins, leaves). */
@@ -386,6 +409,9 @@ export class Play {
         break;
       }
       case 'win':
+        if (this.opts.campaign && this.net.role !== 'guest') {
+          recordWin(this.opts.campaign.id, { coins: this.game.coins, gems: this.game.gems, time: this.game.wonAt });
+        }
         audio.music(null);
         audio.play('win', 0.7);
         pop('EXIT!', '#ffd24a');
@@ -407,9 +433,20 @@ export class Play {
     const r = canvas.getBoundingClientRect();
     const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    this.zoom = Math.max(2, Math.round(Math.min(w, h) / (VIEW_TILES * TILE)));
+    this.baseZoom = Math.max(2, Math.round(Math.min(w, h) / (VIEW_TILES * TILE)));
+    // settled views use whole-pixel zoom (crisp pixel art); only the short star zoom-out eases in between
+    const target = (this.meP?.starLeft ?? 0) > 0 ? STAR_VIEW_TILES : VIEW_TILES;
+    const exact = Math.min(w, h) / (this.viewTiles * TILE);
+    this.zoom = Math.abs(this.viewTiles - target) < 0.05
+      ? (target === VIEW_TILES ? this.baseZoom : Math.max(1, Math.min(this.baseZoom - 1, Math.round(exact))))
+      : Math.max(1, exact);
     const bw = Math.ceil(w / this.zoom), bh = Math.ceil(h / this.zoom);
     if (buffer.width !== bw || buffer.height !== bh) { buffer.width = bw; buffer.height = bh; }
+  }
+
+  /** The level's gates, for the fog (a gate you have no key for hides what is behind it). */
+  private gates() {
+    return this.game.things.filter((t): t is LiveThing & { kind: 'gate' } => t.kind === 'gate');
   }
 
   /** Gates next to (or under) our meerkat holding their key turn see-through. */
@@ -450,7 +487,7 @@ export class Play {
     const scene = { things: g.things, barsOpen: g.barsOpen, openGates: this.openGates() };
     // friends stay visible through the fog, so they are drawn after it
     const visibleFriends = others.filter(([, m]) => (this.fog.visible[Math.round(m.actor.y)]?.[Math.round(m.actor.x)] ?? 0) > 0.3);
-    const bubbles = this.renderer.draw(world, g.time, scene, [meActor, ...visibleFriends.map(([, m]) => m.actor), ...this.npcs], this.particles, meActor);
+    const bubbles = this.renderer.draw(world, g.time, scene, [meActor, ...visibleFriends.map(([, m]) => m.actor), ...this.npcs], this.particles, npc => !g.won && this.talking.has(npc));
     this.fog.draw(world, TILE, LIFT / 2);
     for (const c of this.confetti) {
       world.fillStyle = c.color;
@@ -462,7 +499,7 @@ export class Play {
     screen.drawImage(buffer, 0, 0, bw * Z, bh * Z);
 
     const toScreen = (tx: number, ty: number) => [(tx * TILE + TILE / 2 - camX) * Z, (ty * TILE - camY) * Z];
-    const s = Math.max(1, Math.round(Z / 2));
+    const s = Math.max(1, Math.round(this.baseZoom / 2));
     if (!this.showMap) {
       // a friend's name tag would cover the bubble of a meerkat they stand next to
       const crowded = (b: { x: number; y: number }) => others.some(([, m]) => Math.hypot(m.actor.x * TILE + TILE / 2 - b.x, m.actor.y * TILE - b.y) < TILE * 1.6);
@@ -528,7 +565,7 @@ export class Play {
 
   hud() {
     const g = this.game, pl = this.meP;
-    const s = Math.max(2, Math.round(this.zoom * 0.75));
+    const s = Math.max(2, Math.round(this.baseZoom * 0.75));
     const W = canvas.width, H = canvas.height;
     // coins, gems and keys
     const keys = pl ? [...pl.keys] : [];
@@ -598,10 +635,15 @@ export class Play {
     const W = canvas.width, H = canvas.height;
     const fade = Math.min(1, (g.time - g.wonAt) / 1.2);
     if (fade <= 0.3) return;
-    const s = Math.max(2, Math.round(this.zoom * 0.7));
+    const s = Math.max(2, Math.round(this.baseZoom * 0.7));
     const winner = g.players.find(p => p.mood === 'celebrate');
     const title = !this.multiplayer || winner?.id === this.me ? 'YOU FOUND THE EXIT!' : `${winner?.name ?? 'A FRIEND'} FOUND THE EXIT!`;
-    const again = this.canRestart() ? 'PRESS ENTER OR TAP TO PLAY AGAIN' : 'WAITING FOR THE HOST TO PLAY AGAIN';
+    const c = this.opts.campaign;
+    const lastLevel = c && c.number === c.total;
+    const again = !this.canRestart() ? 'WAITING FOR THE HOST TO PLAY AGAIN'
+      : c?.onNext ? `ENTER: LEVEL ${c.number + 1}   R: AGAIN   ESC: MENU`
+      : lastLevel ? 'YOU FINISHED ALL 10 LEVELS!   R: AGAIN   ESC: MENU'
+      : 'PRESS ENTER OR TAP TO PLAY AGAIN';
     const lines: [string, string, number][] = [
       [title.toUpperCase(), '#ffd24a', 1.5],
       [`COINS  ${g.coins}`, '#fff4d6', 1],

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Sandy Start",
+  "rows": [
+    "###############",
+    "#S#n...c.c..#E#",
+    "#.###.###.#.#.#",
+    "#........c#.#.#",
+    "#.#########.#.#",
+    "#...#c.c....#c#",
+    "#.#.#.#####.#.#",
+    "#.#...#..c#...#",
+    "#.#.#.#.#.#.#.#",
+    "#n#....c#.....#",
+    "###############"
+  ],
+  "texts": [
+    "Welcome to the desert! The exit is somewhere around here.",
+    "I like coins. Do you like coins?"
+  ],
+  "settings": {
+    "fogRadius": 6
+  }
+}

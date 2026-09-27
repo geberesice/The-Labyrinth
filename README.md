@@ -7,13 +7,33 @@ other meerkats' jokes.
 
 ## Levels
 
-- **Tutorial**: a short level where meerkats explain keys, gates, crates, red zones, the star and the map.
-- **Meerkat Maze**: yellow key, then blue key, then the exit.
-- **The Original**: the paper maze this game started from, as a big 49×37 level. The start and jail
-  are bottom left, the big hall with the "Left / Um... / Right" meerkats is in the middle, the
-  treasure room is behind the yellow gate, the spiky sun meerkat is bottom right and the exit is
-  top right. You need the blue, green, orange and red keys, in that order. The layout is generated
-  from the drawing's areas by `node tools/make-original.mjs`.
+Ten levels, each one harder than the one before. A level opens when you finish the one before it
+(progress is kept in this browser / app). The Play list shows your best time and coins.
+
+| # | Level | What is new |
+|---|---|---|
+| 1 | Tutorial | meerkats explain keys, gates, crates, red zones, the star and the map |
+| 2 | Sandy Start | a small maze, just find the exit |
+| 3 | The Yellow Key | one key, one gate |
+| 4 | Meerkat Maze | yellow key, then blue key, then the exit |
+| 5 | Crate Canyon | crates everywhere, gems in dead ends |
+| 6 | Red Desert | red zones on the way: walk through, never stop |
+| 7 | Dark Tunnels | three keys and a smaller light |
+| 8 | Colour Chain | four keys, one after the other |
+| 9 | Night of the Meerkats | five keys, many dead ends, very dark |
+| 10 | The Original | the paper maze this game started from (49×37): start and jail bottom left, the "Left / Um... / Right" hall in the middle, the treasure room behind the yellow gate, the exit top right |
+
+Levels 2, 3 and 5–9 are made by `node tools/make-levels.mjs`, The Original by
+`node tools/make-original.mjs` (from the drawing's areas). Both check that every level can be
+won, every key is needed and no crate has to be pushed.
+
+### Light and fog
+
+You see a circle of light around your meerkat; everything else is dark (the **M** map remembers
+where you have been). Later levels have a smaller circle. A coloured gate you have no key for
+blocks the light, so what is behind it stays hidden. The star lights up the whole maze and zooms
+out so you can see the way. Other meerkats only talk when you are next to them (2 squares) and
+no wall is in between.
 
 ## How to play
 
@@ -24,7 +44,7 @@ other meerkats' jokes.
 | Coloured key | yours for the whole level; walk through gates of the same colour |
 | Coloured block with a keyhole | a gate: only meerkats with the matching key get through |
 | Crate with arrows | push it (if there is free floor behind it) |
-| Red star | 20 seconds of double speed and no fog |
+| Red star | 20 seconds of double speed; the whole maze is lit and the view zooms out |
 | Red dotted zone | you may stay 5 seconds; any longer and you go to jail |
 | Jail | the door opens after 10 seconds |
 | Exit | you win! |
@@ -42,7 +62,7 @@ can't be reached.
 
 Choose **Play with friends** on the menu and type your name.
 
-- **Host a game**: pick a level (the built-in maze or one of yours). You get a 6-letter code
+- **Host a game**: pick a level (any level you have opened, or one of yours). You get a 6-letter code
   like `MQT AHF`. Tell it to your friends and press **Start** (friends can still join later).
 - **Join a game**: type the code your friend gives you.
 
@@ -63,7 +83,7 @@ app or a normally hosted copy of the game.
 
 ## Status
 
-Single-player game with three levels, level editor, music and sound effects, online multiplayer
+Single-player game with ten levels, level editor, music and sound effects, online multiplayer
 and the desktop app are done.
 
 ## Play in the browser

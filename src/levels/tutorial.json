@@ -20,5 +20,8 @@
     "Grab the star to run super fast!",
     "Press M to see the map. The exit is right here!",
     "...or you end up in jail, like me!"
-  ]
+  ],
+  "settings": {
+    "fogRadius": 6
+  }
 }

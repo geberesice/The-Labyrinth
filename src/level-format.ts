@@ -9,12 +9,18 @@ export interface LevelData {
   rows: string[];
   /** meerkat speech, in reading order (top row first, left to right) */
   texts: string[];
+  settings?: LevelSettings;
+}
+
+export interface LevelSettings {
+  /** how far the meerkat can see, in tiles (default 5) */
+  fogRadius?: number;
 }
 
 export const NPC_CHARS = new Set(['n', 'j', '@']);
 
 export function toLevel(d: LevelData): Level {
-  return parseLevel(d.name, d.rows, d.texts);
+  return parseLevel(d.name, d.rows, d.texts, d.settings);
 }
 
 /** A blank level: floor surrounded by a wall, start in the top-left and exit in the bottom-right. */
@@ -36,7 +42,7 @@ export function blankLevel(width = 15, height = 11, name = 'My Maze'): LevelData
 const CODE_PREFIX = 'MEERKAT1:';
 
 export function toCode(d: LevelData): string {
-  const json = JSON.stringify({ n: d.name, r: d.rows, t: d.texts });
+  const json = JSON.stringify({ n: d.name, r: d.rows, t: d.texts, ...(d.settings ? { s: d.settings } : {}) });
   const bytes = new TextEncoder().encode(json);
   let bin = '';
   bytes.forEach(b => { bin += String.fromCharCode(b); });
@@ -46,7 +52,7 @@ export function toCode(d: LevelData): string {
 export function fromCode(code: string): LevelData {
   const trimmed = code.trim().replace(/\s+/g, '');
   if (!trimmed.startsWith(CODE_PREFIX)) throw new Error('That is not a level code. Level codes start with ' + CODE_PREFIX);
-  let obj: { n?: unknown; r?: unknown; t?: unknown };
+  let obj: { n?: unknown; r?: unknown; t?: unknown; s?: unknown };
   try {
     const bin = atob(trimmed.slice(CODE_PREFIX.length));
     const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
@@ -54,23 +60,23 @@ export function fromCode(code: string): LevelData {
   } catch {
     throw new Error('This level code is broken. Try copying it again.');
   }
-  return checked(obj.n, obj.r, obj.t ?? [], 'Shared Maze');
+  return checked(obj.n, obj.r, obj.t ?? [], 'Shared Maze', obj.s);
 }
 
 /** A level file (.meerkat) is the level as readable JSON. */
 export function toFileText(d: LevelData): string {
-  return JSON.stringify({ game: 'the-labyrinth', version: 1, name: d.name, rows: d.rows, texts: d.texts }, null, 2) + '\n';
+  return JSON.stringify({ game: 'the-labyrinth', version: 1, name: d.name, rows: d.rows, texts: d.texts, ...(d.settings ? { settings: d.settings } : {}) }, null, 2) + '\n';
 }
 
 /** Read a level file; level codes pasted into a file work too. */
 export function fromFileText(text: string): LevelData {
   if (text.trim().startsWith(CODE_PREFIX)) return fromCode(text);
-  let obj: { name?: unknown; rows?: unknown; texts?: unknown };
+  let obj: { name?: unknown; rows?: unknown; texts?: unknown; settings?: unknown };
   try { obj = JSON.parse(text); } catch { throw new Error('This file is not a meerkat level.'); }
-  return checked(obj.name, obj.rows, obj.texts ?? [], 'My Maze');
+  return checked(obj.name, obj.rows, obj.texts ?? [], 'My Maze', obj.settings);
 }
 
-function checked(name: unknown, rows: unknown, texts: unknown, fallbackName: string): LevelData {
+function checked(name: unknown, rows: unknown, texts: unknown, fallbackName: string, settings?: unknown): LevelData {
   if (!Array.isArray(rows) || rows.length < 3 || !rows.every(r => typeof r === 'string') ||
       !Array.isArray(texts) || !texts.every(t => typeof t === 'string')) {
     throw new Error('This level is broken. Try copying it again.');
@@ -79,7 +85,10 @@ function checked(name: unknown, rows: unknown, texts: unknown, fallbackName: str
   if (width < 3 || width > 80 || rows.length > 80 || rows.some(r => (r as string).length !== width)) {
     throw new Error('This level has a strange size.');
   }
-  return { version: 1, name: typeof name === 'string' ? name.slice(0, 40) : fallbackName, rows: rows as string[], texts: texts as string[] };
+  const d: LevelData = { version: 1, name: typeof name === 'string' ? name.slice(0, 40) : fallbackName, rows: rows as string[], texts: texts as string[] };
+  const r = (settings as LevelSettings | undefined)?.fogRadius;
+  if (typeof r === 'number' && r >= 2 && r <= 12) d.settings = { fogRadius: r };
+  return d;
 }
 
 // ---------- checking ----------
