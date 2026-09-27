@@ -21,26 +21,58 @@ export function cleanCode(text: string): string {
   return text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 }
 
+/** The server saved in settings (null = the free PeerJS cloud server). */
+export function savedPeerServer(): string | null {
+  try { return localStorage.getItem(SERVER_KEY); } catch { return null; }
+}
+
+export function setPeerServer(server: string | null) {
+  try { if (server) localStorage.setItem(SERVER_KEY, server); else localStorage.removeItem(SERVER_KEY); } catch { /* ignore */ }
+}
+
 /**
- * Which signalling server to use: the free PeerJS cloud by default, or your own
- * ("host:port" or "https://host:port/path"), set with ?peer=... or saved in settings.
+ * Turn "host:port" or "https://host:port/path" into PeerJS options. Without a scheme, the page's
+ * own scheme is used (an https page can only talk to an https server).
  */
-export function peerOptions(): PeerOptions {
-  let server = new URLSearchParams(location.search).get('peer');
-  if (!server) { try { server = localStorage.getItem(SERVER_KEY); } catch { /* ignore */ } }
-  if (!server) return { debug: 1 };
-  const url = new URL(server.includes('://') ? server : `http://${server}`);
+export function serverOptions(server: string): PeerOptions {
+  const text = server.trim();
+  let url: URL;
+  try {
+    url = new URL(/^[a-z]+:\/\//i.test(text) ? text : `${location.protocol === 'https:' ? 'https' : 'http'}://${text}`);
+  } catch {
+    throw new Error('That does not look like a server address. Try something like my-computer:9000');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('The server address must start with http:// or https://');
   return {
     host: url.hostname,
     port: Number(url.port) || (url.protocol === 'https:' ? 443 : 80),
-    path: url.pathname === '/' ? '/' : url.pathname,
+    path: url.pathname || '/',
     secure: url.protocol === 'https:',
     debug: 1,
   };
 }
 
-export function setPeerServer(server: string | null) {
-  try { if (server) localStorage.setItem(SERVER_KEY, server); else localStorage.removeItem(SERVER_KEY); } catch { /* ignore */ }
+/**
+ * Which signalling server to use: the free PeerJS cloud by default, or your own,
+ * set with ?peer=... in the address or saved in the connection settings.
+ */
+export function peerOptions(): PeerOptions {
+  const server = new URLSearchParams(location.search).get('peer') ?? savedPeerServer();
+  if (!server) return { debug: 1 };
+  try { return serverOptions(server); } catch { return { debug: 1 }; }
+}
+
+/** Try to connect to a server. Resolves null when it works, or a message saying what went wrong. */
+export function testPeerServer(server: string | null, timeoutMs = 8000): Promise<string | null> {
+  return new Promise(resolve => {
+    let opts: PeerOptions;
+    try { opts = server ? serverOptions(server) : { debug: 0 }; } catch (e) { resolve((e as Error).message); return; }
+    const peer = new Peer({ ...opts, debug: 0 });
+    const done = (msg: string | null) => { clearTimeout(timer); peer.destroy(); resolve(msg); };
+    const timer = setTimeout(() => done('The server did not answer. Check the address and that it is running.'), timeoutMs);
+    peer.on('open', () => done(null));
+    peer.on('error', err => done(friendlyError(err)));
+  });
 }
 
 function friendlyError(err: { type?: string; message?: string }): string {
