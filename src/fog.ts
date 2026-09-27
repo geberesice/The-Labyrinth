@@ -33,6 +33,17 @@ export class Fog {
     }
   }
 
+  /** Mark what a friend at (px, py) can see as explored (shared map), without lighting it up for us. */
+  reveal(px: number, py: number) {
+    const { level, radius } = this;
+    const ox = Math.round(px), oy = Math.round(py);
+    for (let y = Math.max(0, oy - radius); y <= Math.min(level.height - 1, oy + radius); y++) {
+      for (let x = Math.max(0, ox - radius); x <= Math.min(level.width - 1, ox + radius); x++) {
+        if (!this.explored[y][x] && Math.hypot(x - px, y - py) <= radius - 1 && this.lineOfSight(ox, oy, x, y)) this.explored[y][x] = true;
+      }
+    }
+  }
+
   /** Bresenham walk; walls block sight but the wall itself can be seen. */
   private lineOfSight(x0: number, y0: number, x1: number, y1: number): boolean {
     let dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);

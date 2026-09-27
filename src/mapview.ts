@@ -8,7 +8,9 @@ import { isWall, type Level } from './level';
  * white paper, purple marker walls, orange coin dots, blue gem dots.
  * Only explored parts are drawn.
  */
-export function drawMapView(ctx: CanvasRenderingContext2D, level: Level, fog: Fog, player: { x: number; y: number },
+export interface MapMeerkat { x: number; y: number; color: string; me: boolean; name?: string; help?: boolean }
+
+export function drawMapView(ctx: CanvasRenderingContext2D, level: Level, fog: Fog, meerkats: MapMeerkat[],
   w: number, h: number, time: number, things: LiveThing[]) {
   ctx.fillStyle = 'rgba(20, 12, 28, 0.85)';
   ctx.fillRect(0, 0, w, h);
@@ -98,12 +100,20 @@ export function drawMapView(ctx: CanvasRenderingContext2D, level: Level, fog: Fo
   for (const n of level.npcs) if (seen(n.x, n.y)) label(n.variant === 'spiky' ? '☼' : '☺', n.x, n.y, '#6a3fb5');
   if (seen(level.start.x, level.start.y)) label('S', level.start.x, level.start.y);
 
-  // you are here
+  // all meerkats; "you are here" pulses; jailed friends shout HELP
   const pulse = 1 + Math.sin(time * 6) * 0.2;
-  ctx.fillStyle = '#e8433a';
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx(player.x), cy(player.y), cell * 0.32 * pulse, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  for (const m of [...meerkats].sort((a, b) => Number(a.me) - Number(b.me))) {
+    ctx.fillStyle = m.color;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = m.me ? 3 : 2;
+    ctx.beginPath(); ctx.arc(cx(m.x), cy(m.y), cell * (m.me ? 0.34 * pulse : 0.28), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (m.help || (!m.me && m.name)) {
+      ctx.font = `bold ${Math.max(10, Math.round(cell * 0.45))}px system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = m.help ? (Math.floor(time * 3) % 2 ? '#e8433a' : '#8a1a12') : '#3a2a55';
+      ctx.fillText(m.help ? 'HELP!' : m.name!, cx(m.x), cy(m.y) - cell * 0.4);
+    }
+  }
   ctx.restore();
 
   ctx.fillStyle = '#fff4d6';
