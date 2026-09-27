@@ -67,6 +67,11 @@
     .players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
     .players li { display: flex; align-items: center; gap: 8px; font-weight: bold; }
     .players .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--cream); }
+    .settings { background: var(--panel-2); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+    .settings summary { cursor: pointer; font-weight: bold; color: var(--sand); }
+    .settings[open] summary { margin-bottom: 4px; }
+    .settings > * + * { margin-top: 6px; }
+    .ok { color: var(--green); margin: 0; }
     .btn[disabled] { opacity: .5; cursor: default; filter: none; }
 
     /* editor */

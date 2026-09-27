@@ -54,7 +54,9 @@ everyone, with **HELP!** over friends in jail. When anyone reaches the exit, eve
 
 How it connects: the browsers talk directly to each other (WebRTC, using PeerJS). A free public
 PeerJS server only introduces them. If that server is down or blocked, run your own with
-`npm run peer-server` and open the game with `?peer=your-computer:9000`.
+`npm run peer-server` and type its address (like `my-computer:9000`) under **Play with friends →
+Connection settings**; **Test** checks it works. Everybody playing together needs the same server.
+(Adding `?peer=my-computer:9000` to the game's address also works.)
 
 Online play does not work inside the claude.ai preview page (it blocks WebRTC); use the desktop
 app or a normally hosted copy of the game.
@@ -63,6 +65,11 @@ app or a normally hosted copy of the game.
 
 Single-player game with three levels, level editor, music and sound effects, online multiplayer
 and the desktop app are done.
+
+## Play in the browser
+
+**https://geberesice.github.io/The-Labyrinth/** (updated automatically every time `main` changes).
+Online play works there too.
 
 ## Running
 
@@ -92,8 +99,9 @@ The game also comes as a desktop app for Windows, macOS and Linux. It has the sa
   - Linux: `The-Labyrinth-…-linux.AppImage`, make it executable and double-click.
 - **Run from the code:** `npm run app`. Build installers yourself with `npm run dist`
   (on Windows for Windows, on a Mac for macOS).
-- **Make a new version:** change `"version"` in `package.json`, then push a tag with the same number,
-  for example `git tag v0.2.0 && git push origin v0.2.0`.
+- **Make a new version:** change `"version"` in `package.json`, then either push a tag with the same
+  number (`git tag v0.2.0 && git push origin v0.2.0`) or, on GitHub, open *Actions → Desktop app →
+  Run workflow* and type the version (e.g. `v0.2.0`). The installers appear under *Releases*.
 
 ## Art
 

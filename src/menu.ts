@@ -6,7 +6,7 @@ import { LEVEL_1, LEVEL_1_DATA } from './level';
 import { desktop } from './desktop';
 import { blankLevel, fromCode, fromFileText, type LevelData } from './level-format';
 import { LIFT, TILE, WorldRenderer, type Actor } from './renderer';
-import { cleanCode, GuestSession, HostSession, MAX_PLAYERS } from './net/session';
+import { cleanCode, GuestSession, HostSession, MAX_PLAYERS, savedPeerServer, serverOptions, setPeerServer, testPeerServer } from './net/session';
 import type { HostMsg } from './net/protocol';
 import { BUILTIN_LEVELS } from './levels';
 import { deleteLevel, listLevels } from './storage';
@@ -127,9 +127,49 @@ export class Menu {
             this.showJoining(code.value, n);
           }))),
       err,
+      this.connectionSettings(),
       this.btn('← Back', 'btn ghost', () => this.showMain()),
     )));
     (name.value ? code : name).focus();
+  }
+
+  /** Which server helps players find each other (the free PeerJS one, or your own). */
+  private connectionSettings() {
+    const saved = savedPeerServer();
+    const fromAddress = new URLSearchParams(location.search).get('peer');
+    const input = el('input', { id: 'peer-server', value: saved ?? '', placeholder: 'Empty = the free public server', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Server address' });
+    const status = el('p', { class: 'muted', role: 'status' },
+      fromAddress ? `Using ${fromAddress} (from the page address).` : saved ? `Using your server: ${saved}` : 'Using the free public server.');
+    const say = (text: string, cls = 'muted') => { status.textContent = text; status.className = cls; };
+    const value = () => input.value.trim() || null;
+    const test = this.btn('Test', 'btn small ghost', async () => {
+      const server = value();
+      if (server) { try { serverOptions(server); } catch (e) { say((e as Error).message, 'error'); return; } }
+      say(`Testing ${server ?? 'the free server'}…`);
+      test.setAttribute('disabled', '');
+      const problem = await testPeerServer(server);
+      test.removeAttribute('disabled');
+      say(problem ? problem : `${server ?? 'The free server'} works!`, problem ? 'error' : 'ok');
+    });
+    const save = this.btn('Save', 'btn small', () => {
+      const server = value();
+      if (server) { try { serverOptions(server); } catch (e) { say((e as Error).message, 'error'); return; } }
+      setPeerServer(server);
+      say(server ? `Saved. Online games now use ${server}.` : 'Saved. Online games use the free public server.', 'ok');
+    });
+    const reset = this.btn('Use the free server', 'btn small ghost', () => {
+      input.value = '';
+      setPeerServer(null);
+      say('Online games use the free public server.', 'ok');
+    });
+    const box = el('details', { class: 'settings' },
+      el('summary', {}, 'Connection settings'),
+      el('p', { class: 'muted' }, 'Online games use a free public server to find each other. If joining does not work, one of you can run your own server (npm run peer-server) and type its address here, like my-computer:9000. Everybody playing together needs the same server.'),
+      el('label', { class: 'field' }, el('span', {}, 'Server'), input),
+      el('div', { class: 'row' }, test, save, reset),
+      status);
+    if (saved) box.setAttribute('open', '');
+    return box;
   }
 
   private lobbyCard(...children: (Node | string)[]) {
