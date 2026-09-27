@@ -92,9 +92,10 @@ export const LEVEL_1 = parseLevel('Meerkat Maze', [
   '#n....c#t...c.....#.....#',
   '#########################',
 ], [
+  // meerkats in reading order (top row first, left to right)
+  'Yes! Right is always right.',
   'Help! I stayed in the red zone too long!',
   'Well, that is like the home of the sun!',
-  'Yes! Right is always right.',
   'Well... wrong.',
 ]);
 

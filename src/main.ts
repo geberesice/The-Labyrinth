@@ -236,7 +236,7 @@ class Play {
     const toScreen = (tx: number, ty: number) => [(tx * TILE + TILE / 2 - camX) * Z, (ty * TILE - camY) * Z];
     const s = Math.max(1, Math.round(Z / 2));
     if (!this.showMap) {
-      for (const b of bubbles) drawBubble(screen, this.a.font, b.text, (b.x - camX) * Z, (b.y - camY) * Z, s, g.time);
+      if (!g.won && g.players[0].mood !== 'sad') for (const b of bubbles) drawBubble(screen, this.a.font, b.text, (b.x - camX) * Z, (b.y - camY) * Z, s, g.time);
       for (const pp of this.popups) {
         const [x, y] = toScreen(pp.x, pp.y - 0.6 - pp.t * 1.2);
         screen.globalAlpha = Math.max(0, Math.min(1, (1.2 - pp.t) * 3));
@@ -251,8 +251,10 @@ class Play {
         const left = Math.max(0, RULES.zoneSeconds - pl.zoneTime);
         countdownRing(screen, this.a, hx, hy - 6 * s, left / RULES.zoneSeconds, String(Math.ceil(left)), s * 2, g.time, left < 2);
       } else if (pl.jailLeft !== null) {
+        // shown under the meerkat's feet so it doesn't cover speech bubbles
         const t = `FREE IN ${Math.ceil(pl.jailLeft)}`;
-        outlinedText(screen, this.a, t, hx - (t.length * GLYPH_ADVANCE * s) / 2, hy - 4 * s, '#fff4d6', s);
+        const [, fy] = toScreen(p.x, p.y + 1);
+        outlinedText(screen, this.a, t, hx - (t.length * GLYPH_ADVANCE * s) / 2, fy + 2 * s, '#fff4d6', s);
       }
     }
 

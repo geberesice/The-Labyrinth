@@ -164,12 +164,12 @@ export class WorldRenderer {
         ctx.fillStyle = 'rgba(40,20,10,0.3)';
         ctx.fillRect(px + 1, py + 12, 14, 4);
         if (open) {
-          ctx.save();
-          ctx.beginPath(); ctx.rect(px, py - 4, TILE, TILE); ctx.clip();
-          ctx.globalAlpha = 0.85;
-          ctx.drawImage(this.a.gates[th.color], px, py + 7);
-          ctx.restore();
-          if (Math.floor(time * 4) % 2) { ctx.fillStyle = '#fff4d6'; ctx.fillRect(px + 7, py - 1, 2, 2); }
+          // you have the key: the block turns see-through and sparkles
+          ctx.globalAlpha = 0.35 + 0.1 * Math.sin(time * 6);
+          ctx.drawImage(this.a.gates[th.color], px, py - 4);
+          ctx.globalAlpha = 1;
+          if (Math.floor(time * 4) % 2) { ctx.fillStyle = '#fff4d6'; ctx.fillRect(px + 3, py - 2, 1, 1); ctx.fillRect(px + 12, py + 6, 1, 1); }
+          else { ctx.fillStyle = '#fff4d6'; ctx.fillRect(px + 11, py - 1, 1, 1); ctx.fillRect(px + 4, py + 7, 1, 1); }
         } else {
           ctx.drawImage(this.a.gates[th.color], px, py - 4);
         }
