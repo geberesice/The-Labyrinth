@@ -12,12 +12,16 @@ export const RULES = {
   starSeconds: 20, // star: double speed and no fog
   zoneSeconds: 5, // how long you may stay in a red zone
   jailSeconds: 10, // solo: the jail door opens by itself after this
+  rescueSeconds: 60, // with friends: wait to be bailed out, but never longer than this
 };
 
 export type Mood = 'none' | 'celebrate' | 'sad' | 'pickup';
 
 export interface Player {
   id: number;
+  name: string;
+  /** which meerkat sprite (scarf colour) */
+  skin: number;
   /** tile the player is on, or walking to */
   cx: number; cy: number;
   /** tile the current step started from */
@@ -48,6 +52,7 @@ export type GameEvent =
   | { type: 'coin' | 'gem' | 'key' | 'star'; x: number; y: number; player: number; color?: KeyColor; amount?: number }
   | { type: 'push'; x: number; y: number; player: number }
   | { type: 'jailed' | 'released' | 'zone-enter' | 'zone-leave'; player: number; x: number; y: number }
+  | { type: 'bailed'; player: number; x: number; y: number; freed: number[] }
   | { type: 'gate'; x: number; y: number; player: number; color: KeyColor }
   | { type: 'win'; player: number; x: number; y: number };
 
@@ -69,20 +74,30 @@ export interface Game {
 const key = (x: number, y: number) => `${x},${y}`;
 
 export function createGame(level: Level, playerCount = 1): Game {
-  const players: Player[] = [];
-  for (let i = 0; i < playerCount; i++) {
-    const { x, y } = level.start;
-    players.push({
-      id: i, cx: x, cy: y, fromX: x, fromY: y, stepT: 1, dir: 'down', keys: new Set(),
-      zoneTime: null, jailLeft: null, starLeft: 0, mood: 'none', moodLeft: 0, pushing: false,
-    });
-  }
-  return {
+  const g: Game = {
     level,
     things: level.things.map((t, id) => ({ ...t, id, gone: false })),
-    players, coins: 0, gems: 0, time: 0, won: false, wonAt: 0, barsOpen: false,
+    players: [], coins: 0, gems: 0, time: 0, won: false, wonAt: 0, barsOpen: false,
     jailCells: findJailCells(level), events: [],
   };
+  for (let i = 0; i < playerCount; i++) addPlayer(g);
+  return g;
+}
+
+/** Add a meerkat at the start (used when a friend joins). Returns the new player. */
+export function addPlayer(g: Game, name?: string): Player {
+  const id = g.players.reduce((m, p) => Math.max(m, p.id + 1), 0);
+  const { x, y } = g.level.start;
+  const p: Player = {
+    id, name: name ?? `Meerkat ${id + 1}`, skin: id % 5, cx: x, cy: y, fromX: x, fromY: y, stepT: 1, dir: 'down',
+    keys: new Set(), zoneTime: null, jailLeft: null, starLeft: 0, mood: 'none', moodLeft: 0, pushing: false,
+  };
+  g.players.push(p);
+  return p;
+}
+
+export function removePlayer(g: Game, id: number) {
+  g.players = g.players.filter(p => p.id !== id);
 }
 
 /** Flood fill from the jail spot without crossing walls or bars. */
@@ -109,14 +124,18 @@ export function thingsAt(g: Game, x: number, y: number): LiveThing[] {
   return g.things.filter(t => !t.gone && t.x === x && t.y === y);
 }
 
-function occupied(g: Game, x: number, y: number, except?: Player): boolean {
-  if (g.level.npcs.some(n => n.x === x && n.y === y)) return true;
+/** Meerkat NPCs block the way. Players walk through each other (no getting stuck in corridors). */
+function npcAt(g: Game, x: number, y: number): boolean {
+  return g.level.npcs.some(n => n.x === x && n.y === y);
+}
+
+function playerAt(g: Game, x: number, y: number, except?: Player): boolean {
   return g.players.some(p => p !== except && (p.cx === x && p.cy === y || (p.stepT < 1 && p.fromX === x && p.fromY === y)));
 }
 
 /** Can player `p` step onto (x, y)? (crates are handled separately) */
 function canEnter(g: Game, p: Player, x: number, y: number): boolean {
-  if (isWall(g.level, x, y) || occupied(g, x, y, p)) return false;
+  if (isWall(g.level, x, y) || npcAt(g, x, y)) return false;
   for (const t of thingsAt(g, x, y)) {
     if (t.kind === 'gate' && !p.keys.has(t.color)) return false;
     if (t.kind === 'bars' && !g.barsOpen) return false;
@@ -127,15 +146,24 @@ function canEnter(g: Game, p: Player, x: number, y: number): boolean {
 
 /** A crate can slide into an empty floor tile (no items, gates, exit, meerkats). */
 function crateCanEnter(g: Game, x: number, y: number): boolean {
-  if (isWall(g.level, x, y) || occupied(g, x, y)) return false;
+  if (isWall(g.level, x, y) || npcAt(g, x, y) || playerAt(g, x, y)) return false;
   if (g.jailCells.has(key(x, y))) return false;
   return thingsAt(g, x, y).length === 0;
 }
 
-/** Advance the game by dt seconds. `inputs[i]` is the direction player i is holding (or null). */
-export function step(g: Game, inputs: (Dir | null)[], dt: number): GameEvent[] {
+/**
+ * Advance the game by dt seconds. `inputs[id]` is the direction player `id` is holding (or null);
+ * `actions` holds the ids of players who pressed the action button (Space) this frame.
+ */
+export function step(g: Game, inputs: (Dir | null | undefined)[], dt: number, actions: ReadonlySet<number> = new Set()): GameEvent[] {
   g.events = [];
   g.time += dt;
+
+  // bail out friends: stand next to the jail bars and press the action button
+  for (const id of actions) {
+    const p = g.players.find(q => q.id === id);
+    if (p && !g.won && p.jailLeft === null) tryBail(g, p);
+  }
 
   for (const t of g.things) {
     if (t.slideT !== undefined && t.slideT < 1) t.slideT = Math.min(1, t.slideT + dt / RULES.stepTime);
@@ -194,7 +222,7 @@ function tryMove(g: Game, p: Player, dir: Dir) {
   const crate = thingsAt(g, nx, ny).find(t => t.kind === 'crate');
   if (crate) {
     const bx = nx + dx, by = ny + dy;
-    if (isWall(g.level, nx, ny) || occupied(g, nx, ny, p) || !crateCanEnter(g, bx, by)) { p.pushing = true; return; }
+    if (playerAt(g, nx, ny, p) || !crateCanEnter(g, bx, by)) { p.pushing = true; return; }
     crate.fromX = crate.x; crate.fromY = crate.y; crate.slideT = 0;
     crate.x = bx; crate.y = by;
     p.pushing = true;
@@ -242,6 +270,20 @@ function arrive(g: Game, p: Player) {
   }
 }
 
+/** Is the player standing next to (or on) the jail bars? */
+export function nearBars(g: Game, p: Player): boolean {
+  return g.things.some(t => t.kind === 'bars' && Math.abs(t.x - p.cx) + Math.abs(t.y - p.cy) <= 1);
+}
+
+function tryBail(g: Game, p: Player) {
+  const jailed = g.players.filter(q => q.jailLeft !== null);
+  if (!jailed.length || !nearBars(g, p) || g.jailCells.has(key(p.cx, p.cy))) return;
+  for (const q of jailed) q.jailLeft = null;
+  g.barsOpen = true;
+  p.mood = 'pickup'; p.moodLeft = 0.6;
+  g.events.push({ type: 'bailed', player: p.id, x: p.cx, y: p.cy, freed: jailed.map(q => q.id) });
+}
+
 function sendToJail(g: Game, p: Player) {
   p.zoneTime = null;
   const spot = g.level.jail ?? g.level.start;
@@ -251,7 +293,8 @@ function sendToJail(g: Game, p: Player) {
   p.dir = 'down';
   p.pushing = false;
   if (g.level.jail) {
-    p.jailLeft = RULES.jailSeconds;
+    // alone: the door opens by itself; with friends: wait for a rescue (with a safety limit)
+    p.jailLeft = g.players.length > 1 ? RULES.rescueSeconds : RULES.jailSeconds;
     g.barsOpen = false;
   }
   p.mood = 'sad'; p.moodLeft = 1.5;

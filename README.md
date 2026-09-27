@@ -28,10 +28,31 @@ meerkat...) and click or drag on the map; right-click erases. Press **Play** to 
 The panel tells you if something is missing (a start, an exit, a key for a gate) or if the exit
 can't be reached.
 
+## Playing with friends
+
+Choose **Play with friends** on the menu and type your name.
+
+- **Host a game**: pick a level (the built-in maze or one of yours). You get a 6-letter code
+  like `MQT AHF`. Tell it to your friends and press **Start** (friends can still join later).
+- **Join a game**: type the code your friend gives you.
+
+Up to 4 meerkats play in the same maze. Coins and gems are shared, but a key belongs to whoever
+picked it up. If a meerkat stays too long in a red zone it goes to jail and waits for a friend:
+walk up to the jail bars and press **Space** to bail them out (after 60 seconds the door opens
+anyway). Arrows at the edge of the screen point to friends you can't see, and the map shows
+everyone, with **HELP!** over friends in jail. When anyone reaches the exit, everybody wins.
+
+How it connects: the browsers talk directly to each other (WebRTC, using PeerJS). A free public
+PeerJS server only introduces them. If that server is down or blocked, run your own with
+`npm run peer-server` and open the game with `?peer=your-computer:9000`.
+
+Online play does not work inside the claude.ai preview page (it blocks WebRTC); use the desktop
+app or a normally hosted copy of the game.
+
 ## Status
 
-Single-player game and level editor are done. Next: sound, multiplayer with a join code
-(friends can bail you out of jail) and the desktop app.
+Single-player game, level editor, music and sound effects, and online multiplayer are done.
+Next: more levels and the desktop app.
 
 ## Running
 
@@ -40,9 +61,10 @@ npm install
 npm run dev            # open the printed URL
 npm run build:single   # -> dist/index.html, one self-contained file you can double-click
 npm test               # game rule tests
+npm run peer-server    # optional: your own server for online play
 ```
 
-Controls: arrows / WASD to walk, **M** for the map, **R** to restart. On touch screens, hold your finger on the side
+Controls: arrows / WASD to walk, **M** for the map, **N** for sound (on / music off / muted), **R** to restart, **Esc** to go back. On touch screens, hold your finger on the side
 of the screen you want to walk towards; tap **MAP** for the map.
 Add `?fog=0` to the URL to switch the fog off (for testing).
 

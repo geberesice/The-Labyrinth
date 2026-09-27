@@ -1,8 +1,12 @@
-// Title menu: play the built-in maze, your own levels, a shared level code, or open the editor.
+// Title menu: play the built-in maze, your own levels, a shared level code, play with friends,
+// or open the editor.
 import type { Assets } from './assets';
+import { audio } from './audio';
 import { LEVEL_1, LEVEL_1_DATA } from './level';
 import { blankLevel, fromCode, type LevelData } from './level-format';
 import { LIFT, TILE, WorldRenderer, type Actor } from './renderer';
+import { cleanCode, GuestSession, HostSession, MAX_PLAYERS } from './net/session';
+import type { HostMsg } from './net/protocol';
 import { deleteLevel, listLevels } from './storage';
 import { el } from './ui';
 
@@ -14,6 +18,20 @@ const world = buffer.getContext('2d')!;
 export interface MenuOptions {
   play: (d: LevelData) => void;
   edit: (d: LevelData, id?: string) => void;
+  /** start an online game as the host */
+  host: (session: HostSession, d: LevelData, name: string) => void;
+  /** the host started the game we joined */
+  joined: (session: GuestSession, d: LevelData, me: number) => void;
+  /** shown once on the main menu (e.g. why an online game ended) */
+  notice?: string;
+}
+
+const NAME_KEY = 'meerkat-labyrinth/name';
+function savedName(): string {
+  try { return localStorage.getItem(NAME_KEY) ?? ''; } catch { return ''; }
+}
+function saveName(n: string) {
+  try { localStorage.setItem(NAME_KEY, n); } catch { /* fine */ }
 }
 
 export class Menu {
@@ -27,32 +45,167 @@ export class Menu {
     this.actors = LEVEL_1.npcs.map(n => ({ x: n.x, y: n.y, sheet: a.meerkats[n.skin], anim: 'sentry' as const, dir: 'down' as const, t: n.x, npc: n }));
     this.actors.push({ x: 8, y: 7, sheet: a.meerkats[0], anim: 'sentry', dir: 'down', t: 0 });
     this.showMain();
+    audio.music('menu');
   }
 
-  dispose() { this.root.replaceChildren(); }
+  /** an online session that is still in the lobby (closed if we leave the menu without starting) */
+  private session: HostSession | GuestSession | null = null;
+
+  dispose() {
+    this.root.replaceChildren();
+    this.session?.close();
+  }
+
+  private leaveLobby() {
+    this.session?.close();
+    this.session = null;
+  }
 
   private btn(label: string, cls: string, fn: () => void) {
     const b = el('button', { class: cls }, label);
-    b.addEventListener('click', fn);
+    b.addEventListener('click', () => { audio.play('click', 0.4); fn(); });
     return b;
   }
 
   private showMain() {
+    this.leaveLobby();
     const saved = listLevels();
     const card = el('div', { class: 'menu-card' },
       el('h1', {}, 'The Labyrinth'),
       el('p', { class: 'tagline' }, 'Help the meerkat find the exit!'),
+      ...(this.opts.notice ? [el('p', { class: 'notice', role: 'status' }, this.opts.notice)] : []),
       this.btn('▶  Play: Meerkat Maze', 'btn play big', () => this.opts.play(LEVEL_1_DATA)),
       this.btn(`My levels (${saved.length})`, 'btn big', () => this.showMyLevels()),
       this.btn('✎  Make a level', 'btn big', () => this.opts.edit(blankLevel())),
+      this.btn('👥  Play with friends', 'btn big', () => this.showFriends()),
       this.btn('Play a level code', 'btn ghost', () => this.showCode()),
+      this.soundButton(),
       el('p', { class: 'credits' }, 'Designed by our 8-year-old game designer. Art: Ninja Adventure by Pixel-boy (CC0).'),
     );
     this.root.replaceChildren(el('div', { class: 'menu' }, card));
     (card.querySelector('.btn.play') as HTMLButtonElement | null)?.focus();
   }
 
+  // ---------------- play with friends ----------------
+
+  private showFriends() {
+    this.leaveLobby();
+    const name = el('input', { id: 'player-name', maxlength: '16', value: savedName(), placeholder: 'Your name', 'aria-label': 'Your name' });
+    const levels = [{ id: 'lvl1', data: LEVEL_1_DATA }, ...listLevels().map(l => ({ id: l.id, data: l.data }))];
+    const pick = el('select', { id: 'host-level', 'aria-label': 'Level' },
+      ...levels.map(l => el('option', { value: l.id }, l.data.name)));
+    const code = el('input', { id: 'join-code', maxlength: '8', placeholder: 'ABC123', autocomplete: 'off', 'aria-label': 'Game code' });
+    code.addEventListener('input', () => { code.value = cleanCode(code.value); });
+    const err = el('p', { class: 'error', role: 'alert' });
+    const myName = () => {
+      const n = name.value.trim().slice(0, 16);
+      if (!n) { err.textContent = 'Type your name first.'; name.focus(); return null; }
+      saveName(n);
+      return n;
+    };
+    this.root.replaceChildren(el('div', { class: 'menu' }, el('div', { class: 'menu-card' },
+      el('h2', {}, 'Play with friends'),
+      el('p', { class: 'muted' }, `Up to ${MAX_PLAYERS} meerkats. Find the exit together, share the coins, and bail each other out of jail!`),
+      el('label', { class: 'field' }, el('span', {}, 'Your name'), name),
+      el('div', { class: 'split' },
+        el('div', { class: 'col' },
+          el('h3', {}, 'Host a game'),
+          el('label', { class: 'field' }, el('span', {}, 'Level'), pick),
+          this.btn('Host', 'btn play', () => {
+            const n = myName();
+            if (n) this.showHostLobby(levels.find(l => l.id === pick.value)!.data, n);
+          })),
+        el('div', { class: 'col' },
+          el('h3', {}, 'Join a game'),
+          el('label', { class: 'field' }, el('span', {}, 'Game code'), code),
+          this.btn('Join', 'btn play', () => {
+            const n = myName();
+            if (!n) return;
+            if (code.value.length !== 6) { err.textContent = 'The game code has 6 letters and numbers.'; code.focus(); return; }
+            this.showJoining(code.value, n);
+          }))),
+      err,
+      this.btn('← Back', 'btn ghost', () => this.showMain()),
+    )));
+    (name.value ? code : name).focus();
+  }
+
+  private lobbyCard(...children: (Node | string)[]) {
+    this.root.replaceChildren(el('div', { class: 'menu' }, el('div', { class: 'menu-card' }, ...children)));
+  }
+
+  private showHostLobby(level: LevelData, name: string) {
+    const session = new HostSession();
+    this.session = session;
+    const codeEl = el('p', { class: 'big-code', 'aria-live': 'polite' }, '······');
+    const status = el('p', { class: 'muted', role: 'status' }, 'Getting a game code…');
+    const list = el('ul', { class: 'players' });
+    const start = this.btn('▶ Start', 'btn play big', () => {
+      this.session = null; // the game takes over the session
+      this.opts.host(session, level, name);
+    });
+    start.setAttribute('disabled', '');
+    const refresh = () => {
+      const names = [name, ...[...session.guests.values()].map(g => g.name)];
+      list.replaceChildren(...names.map((n, i) => el('li', {}, el('span', { class: 'dot', style: `background:${['#e8433a', '#3a8fe8', '#57b847', '#b457e8'][i]}` }), n)));
+      const lobby: HostMsg = { t: 'lobby', players: names.map((n, i) => ({ id: i, name: n, skin: i })) };
+      session.broadcast(lobby);
+    };
+    session.onReady = code => {
+      codeEl.textContent = `${code.slice(0, 3)} ${code.slice(3)}`;
+      status.textContent = `Tell your friends this code. They choose "Play with friends", then "Join". You can start now; friends can join later too.`;
+      start.removeAttribute('disabled');
+      refresh();
+    };
+    session.onError = msg => { status.textContent = msg; status.className = 'error'; };
+    session.onGuestJoin = () => { audio.chatter(); refresh(); };
+    session.onGuestLeave = refresh;
+    session.start();
+    this.lobbyCard(
+      el('h2', {}, `Hosting: ${level.name}`),
+      el('p', { class: 'muted' }, 'Game code'),
+      codeEl, status,
+      el('h3', {}, 'Meerkats'), list,
+      el('div', { class: 'row' }, start, this.btn('Cancel', 'btn ghost', () => this.showFriends())),
+    );
+  }
+
+  private showJoining(code: string, name: string) {
+    const session = new GuestSession();
+    this.session = session;
+    const status = el('p', { class: 'muted', role: 'status' }, `Looking for game ${code}…`);
+    const list = el('ul', { class: 'players' });
+    session.onError = msg => { status.textContent = msg; status.className = 'error'; };
+    session.onClose = () => { status.textContent = 'The connection closed.'; status.className = 'error'; };
+    session.onMessage = m => {
+      if (m.t === 'lobby') {
+        status.textContent = 'You are in! Waiting for the host to start…';
+        list.replaceChildren(...m.players.map(p => el('li', {}, el('span', { class: 'dot', style: `background:${['#e8433a', '#3a8fe8', '#57b847', '#b457e8'][p.skin % 4]}` }), p.name)));
+      } else if (m.t === 'start') {
+        this.session = null; // the game takes over the session
+        this.opts.joined(session, m.level, m.you);
+      } else if (m.t === 'bye') {
+        status.textContent = m.reason; status.className = 'error';
+      }
+    };
+    session.join(code, name);
+    this.lobbyCard(
+      el('h2', {}, 'Joining a game'),
+      status,
+      el('h3', {}, 'Meerkats'), list,
+      this.btn('Cancel', 'btn ghost', () => this.showFriends()),
+    );
+  }
+
+  private soundButton() {
+    const text = () => ({ all: '♪ Sound: on', fx: '♪ Music: off', off: '♪ Sound: off' })[audio.setting];
+    const b = el('button', { class: 'btn ghost' }, text());
+    b.addEventListener('click', () => { audio.toggle(); b.textContent = text(); audio.play('click', 0.4); });
+    return b;
+  }
+
   private showMyLevels() {
+    this.leaveLobby();
     const list = listLevels();
     const items = list.length
       ? list.map(l => el('li', {},
