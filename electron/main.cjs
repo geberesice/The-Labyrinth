@@ -27,6 +27,8 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // keep the game running when the window is in the background (the host runs online games)
+      backgroundThrottling: false,
     },
   });
   win.loadURL('app://game/index.html');

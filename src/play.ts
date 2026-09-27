@@ -99,6 +99,8 @@ export class Play {
   }
 
   get multiplayer() { return this.net.role !== 'solo'; }
+  /** the host keeps the game running for everyone, even when its window is hidden */
+  get runsForOthers() { return this.net.role === 'host'; }
   get meP(): Player | undefined { return this.game.players.find(p => p.id === this.me); }
 
   dispose() {
