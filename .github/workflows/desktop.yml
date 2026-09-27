@@ -72,10 +72,14 @@ jobs:
         with:
           path: installers
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.release || github.ref_name }}
-          target_commitish: ${{ github.sha }}
-          name: The Labyrinth ${{ inputs.release || github.ref_name }}
-          files: installers/*
-          generate_release_notes: true
+      # publish with GitHub's own command-line tool (no third-party actions needed)
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release || github.ref_name }}
+        run: |
+          gh release create "$TAG" installers/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "The Labyrinth $TAG" \
+            --generate-notes
