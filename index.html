@@ -2,15 +2,98 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>The Labyrinth</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #1a1220; overflow: hidden; }
-    canvas { display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; touch-action: none; }
+    :root {
+      color-scheme: dark;
+      --night: #1a1220;
+      --panel: #2a1d38;
+      --panel-2: #36264a;
+      --line: #4a3566;
+      --purple: #6a3fb5;
+      --purple-dark: #4a2a85;
+      --sand: #ffcb8d;
+      --cream: #fff4d6;
+      --muted: #c9b8dd;
+      --gold: #ffd24a;
+      --red: #ff6a5a;
+      --green: #8cf07a;
+      font-family: "Trebuchet MS", Verdana, system-ui, sans-serif;
+    }
+    html, body { margin: 0; height: 100%; background: var(--night); color: var(--cream); overflow: hidden; }
+    #game { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: none; image-rendering: pixelated; touch-action: none; }
+    #ui { position: absolute; inset: 0; pointer-events: none; }
+    #ui > * { pointer-events: auto; }
+    [hidden] { display: none !important; }
+
+    button { font: inherit; color: inherit; cursor: pointer; }
+    .btn { background: var(--purple); border: 0; border-radius: 6px; box-shadow: inset 0 -3px 0 var(--purple-dark);
+      padding: 8px 14px 10px; font-weight: bold; color: var(--cream); }
+    .btn:hover { filter: brightness(1.12); }
+    .btn:focus-visible, .tool:focus-visible, .colors button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+    .btn.play { background: #2f9e57; box-shadow: inset 0 -3px 0 #1f6e3c; }
+    .btn.ghost { background: var(--panel-2); box-shadow: inset 0 -3px 0 #231733; }
+    .btn.big { font-size: 1.1rem; padding: 12px 18px 14px; }
+    .btn.small { padding: 4px 10px 6px; font-size: .85rem; }
+    textarea, input { font: inherit; color: var(--cream); background: var(--night); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; box-sizing: border-box; width: 100%; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .error { color: var(--red); margin: 0; min-height: 1.2em; }
+
+    /* menu */
+    .menu { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
+    .menu-card { width: min(420px, 100%); box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;
+      background: rgba(42, 29, 56, 0.94); border: 2px solid var(--purple); border-radius: 10px; padding: 22px; }
+    .menu-card h1 { margin: 0; font-size: clamp(2rem, 7vw, 2.8rem); color: var(--sand); letter-spacing: .02em; text-shadow: 3px 3px 0 var(--purple-dark); text-align: center; }
+    .menu-card h2 { margin: 0 0 4px; color: var(--sand); }
+    .menu-card p { margin: 0; }
+    .tagline { text-align: center; color: var(--muted); margin-bottom: 8px !important; }
+    .credits { font-size: .75rem; color: var(--muted); text-align: center; margin-top: 8px !important; }
+    .levels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+    .levels li { display: flex; gap: 6px; align-items: center; background: var(--panel-2); border-radius: 6px; padding: 6px 8px; }
+    .levels .lvl-name { flex: 1; font-weight: bold; overflow-wrap: anywhere; }
+    .levels .lvl-size { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+    .levels .empty { color: var(--muted); }
+
+    /* editor */
+    .editor-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 300px; box-sizing: border-box; overflow-y: auto;
+      background: var(--panel); border-left: 2px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 10px;
+      padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+    .editor-panel input#level-name { flex: 1; min-width: 0; width: auto; font-weight: bold; }
+    .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .tool { display: flex; flex-direction: column; align-items: center; gap: 2px; background: var(--panel-2); border: 2px solid transparent;
+      border-radius: 6px; padding: 4px 2px; font-size: .7rem; }
+    .tool.on { border-color: var(--gold); background: #4a3566; }
+    .tool .icon { width: 36px; height: 42px; image-rendering: pixelated; }
+    .colors { display: flex; gap: 6px; }
+    .colors button { width: 30px; height: 30px; border-radius: 50%; background: var(--c); border: 3px solid var(--panel); }
+    .colors button.on { border-color: var(--cream); }
+    .hint { margin: 0; color: var(--muted); font-size: .85rem; min-height: 2.4em; }
+    .say { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; }
+    .say small { color: var(--muted); }
+    .sizes .size { font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: center; }
+    .problems { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: .85rem; }
+    .problems li { padding: 6px 8px; border-radius: 6px; background: var(--panel-2); border-left: 4px solid var(--line); }
+    .problems li.error { border-left-color: var(--red); color: var(--cream); }
+    .problems li.warning { border-left-color: var(--gold); }
+    .problems li.ok { border-left-color: var(--green); }
+    .status { margin: 0; min-height: 1.2em; color: var(--gold); font-size: .9rem; }
+    .dialog { display: flex; flex-direction: column; gap: 6px; background: var(--panel-2); border: 2px solid var(--purple); border-radius: 8px; padding: 10px; }
+    .dialog h3, .dialog p { margin: 0; }
+    .dialog textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .75rem; word-break: break-all; }
+
+    @media (max-width: 700px) {
+      .editor-panel { top: auto; left: 0; width: auto; height: 46%; border-left: 0; border-top: 2px solid var(--line); }
+      .tools { grid-template-columns: repeat(8, 1fr); }
+      .tool span { display: none; }
+      .tool .icon { width: 30px; height: 35px; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 <body>
-  <canvas id="game" tabindex="0"></canvas>
+  <canvas id="game" tabindex="0" aria-label="Meerkat labyrinth game"></canvas>
+  <div id="ui"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

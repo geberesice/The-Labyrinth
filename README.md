@@ -19,10 +19,19 @@ other meerkats' jokes.
 | Jail | the door opens after 10 seconds |
 | Exit | you win! |
 
+## Level editor
+
+Choose **Make a level** on the menu. Pick a tool (wall, coin, key, gate, red zone, jail, talking
+meerkat...) and click or drag on the map; right-click erases. Press **Play** to try your maze and
+**EDIT** (or Esc) to go back. **Save** keeps it under *My levels* in this browser, and
+**Copy level code** gives you a line of text a friend can paste into *Play a level code*.
+The panel tells you if something is missing (a start, an exit, a key for a gate) or if the exit
+can't be reached.
+
 ## Status
 
-Single-player rules are done. Next: more levels from the paper maze, the level editor, multiplayer
-with a join code (friends can bail you out of jail) and the desktop app.
+Single-player game and level editor are done. Next: sound, multiplayer with a join code
+(friends can bail you out of jail) and the desktop app.
 
 ## Running
 

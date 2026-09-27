@@ -75,7 +75,10 @@ export function parseLevel(name: string, rows: string[], texts: string[]): Level
 }
 
 /** First level. Keys unlock in order: yellow key -> yellow gate -> blue key -> blue gate -> exit. */
-export const LEVEL_1 = parseLevel('Meerkat Maze', [
+export const LEVEL_1_DATA = {
+  version: 1 as const,
+  name: 'Meerkat Maze',
+  rows: [
   '#########################',
   '#S..c#.....c...#...c.n#E#',
   '#.##.#.#####.#.#.######B#',
@@ -91,13 +94,16 @@ export const LEVEL_1 = parseLevel('Meerkat Maze', [
   '###.####t#####.##b#.#.#.#',
   '#n....c#t...c.....#.....#',
   '#########################',
-], [
+  ],
+  texts: [
   // meerkats in reading order (top row first, left to right)
   'Yes! Right is always right.',
   'Help! I stayed in the red zone too long!',
   'Well, that is like the home of the sun!',
   'Well... wrong.',
-]);
+  ],
+};
+export const LEVEL_1 = parseLevel(LEVEL_1_DATA.name, LEVEL_1_DATA.rows, LEVEL_1_DATA.texts);
 
 export function isWall(level: Level, x: number, y: number): boolean {
   return x < 0 || y < 0 || x >= level.width || y >= level.height || level.tiles[y][x] === 'wall';
