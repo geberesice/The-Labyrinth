@@ -30,7 +30,7 @@ can't be reached.
 
 ## Status
 
-Single-player game and level editor are done. Next: sound, multiplayer with a join code
+Single-player game, level editor, music and sound effects are done. Next: multiplayer with a join code
 (friends can bail you out of jail) and the desktop app.
 
 ## Running
@@ -42,7 +42,7 @@ npm run build:single   # -> dist/index.html, one self-contained file you can dou
 npm test               # game rule tests
 ```
 
-Controls: arrows / WASD to walk, **M** for the map, **R** to restart. On touch screens, hold your finger on the side
+Controls: arrows / WASD to walk, **M** for the map, **N** for sound (on / music off / muted), **R** to restart, **Esc** to go back. On touch screens, hold your finger on the side
 of the screen you want to walk towards; tap **MAP** for the map.
 Add `?fog=0` to the URL to switch the fog off (for testing).
 

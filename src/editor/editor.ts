@@ -1,5 +1,6 @@
 // The level editor: paint a maze with the real game art, then play-test it.
 import { KEY_HUES, type Assets, type KeyColor } from '../assets';
+import { audio } from '../audio';
 import type { LiveThing } from '../game/state';
 import { checkLevel, fromCode, NPC_CHARS, toCode, toLevel, type LevelData } from '../level-format';
 import { drawText } from '../pixelfont';
@@ -74,6 +75,7 @@ export class Editor {
     this.buildUi();
     this.bindInput();
     this.refresh();
+    audio.music('menu');
   }
 
   dispose() {
@@ -189,7 +191,7 @@ export class Editor {
     const tools = new Map<string, HTMLButtonElement>();
     const toolButtons = TOOLS.map(t => {
       const b = el('button', { class: 'tool', title: t.hint, 'aria-label': t.label }, this.toolIcon(t), el('span', {}, t.label));
-      b.addEventListener('click', () => { this.tool = t; this.refresh(); });
+      b.addEventListener('click', () => { this.tool = t; audio.play('click', 0.3); this.refresh(); });
       tools.set(t.id, b);
       return b;
     });

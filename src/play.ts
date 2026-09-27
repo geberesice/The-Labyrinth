@@ -1,4 +1,5 @@
 import { KEY_HUES, type Assets, type KeyColor } from './assets';
+import { audio } from './audio';
 import { Fog } from './fog';
 import { createGame, playerPos, RULES, step, type Dir, type Game, type GameEvent, type LiveThing } from './game/state';
 import type { Level } from './level';
@@ -51,6 +52,10 @@ export class Play {
   zoom = 3;
   mapButton = { x: 0, y: 0, w: 0, h: 0 };
   backButton = { x: 0, y: 0, w: 0, h: 0 };
+  soundButton = { x: 0, y: 0, w: 0, h: 0 };
+  /** meerkats that are chatting with the player right now (so each one squeaks once per visit) */
+  private chatting = new Set<Actor>();
+  private lastZoneSecond = -1;
   private listeners = new AbortController();
 
   constructor(private a: Assets, private level: Level, private opts: PlayOptions) {
@@ -74,6 +79,8 @@ export class Play {
     this.particles = []; this.popups = []; this.confetti = [];
     this.still = 0; this.showMap = false;
     this.fog.update(s.x, s.y, NO_FOG);
+    this.chatting.clear();
+    audio.music('game');
   }
 
   bindInput() {
@@ -81,6 +88,7 @@ export class Play {
     addEventListener('keydown', e => {
       if (e.code === 'Escape') { e.preventDefault(); this.opts.onBack(); return; }
       if (e.code === 'KeyM' || e.code === 'Tab') { this.showMap = !this.showMap; e.preventDefault(); return; }
+      if (e.code === 'KeyN') { audio.toggle(); return; }
       if (e.code === 'KeyR' || (this.game.won && (e.code === 'Enter' || e.code === 'Space'))) { this.restart(); e.preventDefault(); return; }
       const d = KEYS[e.code];
       if (d) { e.preventDefault(); if (!this.held.includes(d)) this.held.push(d); }
@@ -101,6 +109,7 @@ export class Play {
       const hit = (r: { x: number; y: number; w: number; h: number }) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
       if (hit(b)) { this.showMap = !this.showMap; return; }
       if (hit(this.backButton)) { this.opts.onBack(); return; }
+      if (hit(this.soundButton)) { audio.toggle(); return; }
       if (this.game.won) { if (this.game.time - this.game.wonAt > 1.5) this.restart(); return; }
       if (this.showMap) return;
       canvas.setPointerCapture(e.pointerId);
@@ -151,8 +160,18 @@ export class Play {
       else if (Math.hypot(dx, dy) < 2.6) {
         n.anim = 'idle';
         n.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-      } else if (n.anim !== 'sentry') { n.anim = 'sentry'; n.dir = 'down'; }
+        if (!this.chatting.has(n)) { this.chatting.add(n); audio.chatter(); }
+      } else {
+        this.chatting.delete(n);
+        if (n.anim !== 'sentry') { n.anim = 'sentry'; n.dir = 'down'; }
+      }
     }
+
+    // red zone countdown beeps once a second, higher as time runs out
+    if (p.zoneTime !== null) {
+      const sec = Math.floor(p.zoneTime);
+      if (sec !== this.lastZoneSecond) { this.lastZoneSecond = sec; if (sec > 0) audio.beep(1 + sec * 0.15); }
+    } else this.lastZoneSecond = -1;
 
     // gems twinkle every now and then
     if (Math.random() < dt * 0.8) {
@@ -175,15 +194,18 @@ export class Play {
     const pop = (text: string, color: string) => this.popups.push({ text, color, x: ev.x, y: ev.y, t: 0 });
     const twinkle = (lift = 0.3) => this.particles.push({ kind: 'twinkle', x: ev.x, y: ev.y - lift, t: 0 });
     switch (ev.type) {
-      case 'coin': pop('+1', '#ffd24a'); break;
-      case 'gem': pop('+5', '#7cc6ff'); twinkle(); break;
-      case 'key': pop(`${ev.color!.toUpperCase()} KEY!`, keyColor(ev.color!)); twinkle(); break;
-      case 'star': pop('STAR POWER!', '#ff6a3a'); twinkle(0.5); break;
-      case 'push': this.particles.push({ kind: 'dust', x: ev.x, y: ev.y, t: 0 }); break;
-      case 'gate': twinkle(0.4); break;
-      case 'jailed': pop('JAIL!', '#ff5a4a'); this.shake = 0.4; break;
-      case 'released': pop('FREE!', '#8cf07a'); break;
+      case 'coin': pop('+1', '#ffd24a'); audio.play('coin', 0.5, 0.95 + Math.random() * 0.1); break;
+      case 'gem': pop('+5', '#7cc6ff'); twinkle(); audio.play('gem', 0.6); break;
+      case 'key': pop(`${ev.color!.toUpperCase()} KEY!`, keyColor(ev.color!)); twinkle(); audio.play('key', 0.6); break;
+      case 'star': pop('STAR POWER!', '#ff6a3a'); twinkle(0.5); audio.play('star', 0.6); break;
+      case 'push': this.particles.push({ kind: 'dust', x: ev.x, y: ev.y, t: 0 }); audio.play('push', 0.5, 0.9 + Math.random() * 0.2); break;
+      case 'gate': twinkle(0.4); audio.play('gate', 0.45); break;
+      case 'zone-enter': audio.play('alert', 0.35); break;
+      case 'jailed': pop('JAIL!', '#ff5a4a'); this.shake = 0.4; audio.play('jail', 0.6); break;
+      case 'released': pop('FREE!', '#8cf07a'); audio.play('free', 0.55); break;
       case 'win':
+        audio.music(null);
+        audio.play('win', 0.7);
         pop('EXIT!', '#ffd24a');
         for (let i = 0; i < 80; i++) {
           const ang = Math.random() * Math.PI * 2, v = 2 + Math.random() * 5;
@@ -328,9 +350,17 @@ export class Play {
     screen.fillStyle = '#261a3a';
     screen.fillRect(this.backButton.x, this.backButton.y + mbh - 2 * s, bbw, 2 * s);
     drawText(screen, this.a.font, back, this.backButton.x + 5 * s, this.backButton.y + 3 * s, '#fff4d6', s);
+    const snd = audio.label;
+    const sbw = (snd.length * 7 + 10) * s;
+    this.soundButton = { x: this.backButton.x - sbw - 4 * s, y: 4 * s, w: sbw, h: mbh };
+    screen.fillStyle = '#3a2a55';
+    screen.fillRect(this.soundButton.x, this.soundButton.y, sbw, mbh);
+    screen.fillStyle = '#261a3a';
+    screen.fillRect(this.soundButton.x, this.soundButton.y + mbh - 2 * s, sbw, 2 * s);
+    drawText(screen, this.a.font, snd, this.soundButton.x + 5 * s, this.soundButton.y + 3 * s, audio.setting === 'off' ? '#c9b8dd' : '#fff4d6', s);
 
     if (!g.won) {
-      const hint = 'ARROWS/WASD: WALK    M: MAP    R: RESTART    ESC: BACK';
+      const hint = 'ARROWS/WASD: WALK    M: MAP    N: SOUND    R: RESTART    ESC: BACK';
       const hs = Math.max(1, Math.round(s * 0.6));
       drawText(screen, this.a.font, hint, (W - hint.length * 7 * hs) / 2, H - 12 * hs, 'rgba(255,244,214,0.75)', hs);
     }

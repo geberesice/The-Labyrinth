@@ -1,4 +1,5 @@
 import { loadAssets, type Assets } from './assets';
+import { audio } from './audio';
 import { Editor } from './editor/editor';
 import { toLevel, type LevelData } from './level-format';
 import { Menu } from './menu';
@@ -46,6 +47,7 @@ class App {
     this.screen?.dispose();
     ui.hidden = false;
     this.screen = this.editor;
+    audio.music('menu');
   }
 
   update(dt: number) { this.screen?.update(dt); }
@@ -55,7 +57,7 @@ class App {
 async function boot() {
   const assets = await loadAssets();
   const app = new App(assets);
-  (window as unknown as { app: App }).app = app; // handy for testing in the console
+  Object.assign(window, { app, audio }); // handy for testing in the console
   let last = performance.now();
   const frame = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);

@@ -1,5 +1,6 @@
 // Title menu: play the built-in maze, your own levels, a shared level code, or open the editor.
 import type { Assets } from './assets';
+import { audio } from './audio';
 import { LEVEL_1, LEVEL_1_DATA } from './level';
 import { blankLevel, fromCode, type LevelData } from './level-format';
 import { LIFT, TILE, WorldRenderer, type Actor } from './renderer';
@@ -27,13 +28,14 @@ export class Menu {
     this.actors = LEVEL_1.npcs.map(n => ({ x: n.x, y: n.y, sheet: a.meerkats[n.skin], anim: 'sentry' as const, dir: 'down' as const, t: n.x, npc: n }));
     this.actors.push({ x: 8, y: 7, sheet: a.meerkats[0], anim: 'sentry', dir: 'down', t: 0 });
     this.showMain();
+    audio.music('menu');
   }
 
   dispose() { this.root.replaceChildren(); }
 
   private btn(label: string, cls: string, fn: () => void) {
     const b = el('button', { class: cls }, label);
-    b.addEventListener('click', fn);
+    b.addEventListener('click', () => { audio.play('click', 0.4); fn(); });
     return b;
   }
 
@@ -46,10 +48,18 @@ export class Menu {
       this.btn(`My levels (${saved.length})`, 'btn big', () => this.showMyLevels()),
       this.btn('✎  Make a level', 'btn big', () => this.opts.edit(blankLevel())),
       this.btn('Play a level code', 'btn ghost', () => this.showCode()),
+      this.soundButton(),
       el('p', { class: 'credits' }, 'Designed by our 8-year-old game designer. Art: Ninja Adventure by Pixel-boy (CC0).'),
     );
     this.root.replaceChildren(el('div', { class: 'menu' }, card));
     (card.querySelector('.btn.play') as HTMLButtonElement | null)?.focus();
+  }
+
+  private soundButton() {
+    const text = () => ({ all: '♪ Sound: on', fx: '♪ Music: off', off: '♪ Sound: off' })[audio.setting];
+    const b = el('button', { class: 'btn ghost' }, text());
+    b.addEventListener('click', () => { audio.toggle(); b.textContent = text(); audio.play('click', 0.4); });
+    return b;
   }
 
   private showMyLevels() {
