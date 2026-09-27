@@ -5,6 +5,16 @@ You are a meerkat. Find the exit! Collect coins and gems, find keys for the colo
 push movable walls, don't stay too long in the red zones (or it's jail!), and listen to the
 other meerkats' jokes.
 
+## Levels
+
+- **Tutorial**: a short level where meerkats explain keys, gates, crates, red zones, the star and the map.
+- **Meerkat Maze**: yellow key, then blue key, then the exit.
+- **The Original**: the paper maze this game started from, as a big 49×37 level. The start and jail
+  are bottom left, the big hall with the "Left / Um... / Right" meerkats is in the middle, the
+  treasure room is behind the yellow gate, the spiky sun meerkat is bottom right and the exit is
+  top right. You need the blue, green, orange and red keys, in that order. The layout is generated
+  from the drawing's areas by `node tools/make-original.mjs`.
+
 ## How to play
 
 | On the map | What it does |
@@ -51,8 +61,8 @@ app or a normally hosted copy of the game.
 
 ## Status
 
-Single-player game, level editor, music and sound effects, online multiplayer and the desktop app
-are done. Next: more levels.
+Single-player game with three levels, level editor, music and sound effects, online multiplayer
+and the desktop app are done.
 
 ## Running
 
