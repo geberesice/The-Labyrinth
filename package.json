@@ -11,12 +11,19 @@
     "preview": "vite preview",
     "sprites": "node tools/make-meerkat.mjs",
     "test": "vitest run",
-    "peer-server": "node server/peer-server.mjs"
+    "peer-server": "node server/peer-server.mjs",
+    "app": "npm run build && electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:linux": "npm run build && electron-builder --linux AppImage",
+    "icon": "node tools/make-icon.mjs"
   },
   "devDependencies": {
     "@breezystack/lamejs": "^1.2.7",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "express": "^4.22.3",
     "peer": "^1.0.2",
+    "peerjs": "^1.5.5",
     "playwright-core": "^1.63.0",
     "pngjs": "^7.0.0",
     "typescript": "^5.6.0",
@@ -24,7 +31,69 @@
     "vite-plugin-singlefile": "^2.0.0",
     "vitest": "^3.2.7"
   },
-  "dependencies": {
-    "peerjs": "^1.5.5"
+  "main": "electron/main.cjs",
+  "author": "The Labyrinth team",
+  "homepage": "https://github.com/geberesice/The-Labyrinth",
+  "build": {
+    "appId": "com.geberesice.thelabyrinth",
+    "productName": "The Labyrinth",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "The-Labyrinth-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "The-Labyrinth-Portable-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "icon": "build/icon.png"
+    },
+    "dmg": {
+      "artifactName": "The-Labyrinth-${version}-mac.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game",
+      "icon": "build/icon.png",
+      "artifactName": "The-Labyrinth-${version}-linux.${ext}"
+    }
   }
 }

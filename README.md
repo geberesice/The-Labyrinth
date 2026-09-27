@@ -51,8 +51,8 @@ app or a normally hosted copy of the game.
 
 ## Status
 
-Single-player game, level editor, music and sound effects, and online multiplayer are done.
-Next: more levels and the desktop app.
+Single-player game, level editor, music and sound effects, online multiplayer and the desktop app
+are done. Next: more levels.
 
 ## Running
 
@@ -67,6 +67,23 @@ npm run peer-server    # optional: your own server for online play
 Controls: arrows / WASD to walk, **M** for the map, **N** for sound (on / music off / muted), **R** to restart, **Esc** to go back. On touch screens, hold your finger on the side
 of the screen you want to walk towards; tap **MAP** for the map.
 Add `?fog=0` to the URL to switch the fog off (for testing).
+
+## Desktop app
+
+The game also comes as a desktop app for Windows, macOS and Linux. It has the same game plus
+**Save file / Open file** for levels (`.meerkat` files you can keep or send to friends).
+
+- **Download:** on GitHub, open *Releases* (made when a version tag like `v1.0.0` is pushed), or open
+  *Actions → Desktop app*, pick the latest run on `main` and download the installer under *Artifacts*.
+  - Windows: `The-Labyrinth-Setup-….exe` (installer) or `The-Labyrinth-Portable-….exe` (no install).
+    Windows may say "Windows protected your PC" because the app is not code-signed: click
+    *More info → Run anyway*.
+  - macOS: `The-Labyrinth-…-mac.dmg`. The first time, right-click the app and choose *Open*.
+  - Linux: `The-Labyrinth-…-linux.AppImage`, make it executable and double-click.
+- **Run from the code:** `npm run app`. Build installers yourself with `npm run dist`
+  (on Windows for Windows, on a Mac for macOS).
+- **Make a new version:** change `"version"` in `package.json`, then push a tag with the same number,
+  for example `git tag v0.2.0 && git push origin v0.2.0`.
 
 ## Art
 

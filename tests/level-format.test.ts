@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blankLevel, canReachExit, checkLevel, fromCode, toCode, toLevel, type LevelData } from '../src/level-format';
+import { blankLevel, canReachExit, checkLevel, fromCode, fromFileText, toCode, toFileText, toLevel, type LevelData } from '../src/level-format';
 import { LEVEL_1 } from '../src/level';
 
 const lvl = (rows: string[], texts: string[] = []): LevelData => ({ version: 1, name: 'T', rows, texts });
@@ -12,6 +12,12 @@ describe('level codes', () => {
   it('reject things that are not level codes', () => {
     expect(() => fromCode('hello')).toThrow(/not a level code/);
     expect(() => fromCode('MEERKAT1:%%%')).toThrow(/broken/);
+  });
+  it('files round-trip, and a pasted code in a file works too', () => {
+    const d = blankLevel();
+    expect(fromFileText(toFileText(d))).toEqual(d);
+    expect(fromFileText(toCode(d))).toEqual(d);
+    expect(() => fromFileText('hello')).toThrow(/not a meerkat level/);
   });
   it('ignore spaces and line breaks pasted into the code', () => {
     const code = toCode(blankLevel());
