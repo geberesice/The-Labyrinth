@@ -2,7 +2,8 @@
 import { KEY_HUES, type Assets, type KeyColor } from '../assets';
 import { audio } from '../audio';
 import type { LiveThing } from '../game/state';
-import { checkLevel, fromCode, NPC_CHARS, toCode, toLevel, type LevelData } from '../level-format';
+import { desktop } from '../desktop';
+import { checkLevel, fromCode, fromFileText, NPC_CHARS, toCode, toFileText, toLevel, type LevelData } from '../level-format';
 import { drawText } from '../pixelfont';
 import { LIFT, TILE, WorldRenderer, type Actor } from '../renderer';
 import { saveLevel } from '../storage';
@@ -239,6 +240,9 @@ export class Editor {
         button('−', 'btn small', () => this.resize(0, -1), 'Shorter'),
         button('+', 'btn small', () => this.resize(0, 1), 'Taller')),
       problems,
+      ...(desktop ? [el('div', { class: 'row' },
+        button('Save file…', 'btn ghost', () => void this.saveFile()),
+        button('Open file…', 'btn ghost', () => void this.openFile()))] : []),
       el('div', { class: 'row' },
         button('Copy level code', 'btn ghost', () => this.copyCode()),
         button('Paste level code', 'btn ghost', () => this.pasteCode())),
@@ -316,6 +320,27 @@ export class Editor {
   }
 
   get currentId() { return this.savedId; }
+
+  private async saveFile() {
+    try {
+      const saved = await desktop!.saveLevelFile(this.data().name, toFileText(this.data()));
+      if (saved) this.say(`Saved ${saved}`);
+    } catch (e) { this.say(`Could not save: ${(e as Error).message}`); }
+  }
+
+  private async openFile() {
+    try {
+      const file = await desktop!.openLevelFile();
+      if (!file) return;
+      const d = fromFileText(file.text);
+      this.snapshot();
+      this.load(d);
+      this.ui.name.value = this.name;
+      this.savedId = undefined;
+      this.refresh();
+      this.say(`Opened ${file.name}.`);
+    } catch (e) { this.say((e as Error).message); }
+  }
 
   private copyCode() {
     const code = toCode(this.data());

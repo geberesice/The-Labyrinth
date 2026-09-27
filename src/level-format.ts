@@ -54,16 +54,32 @@ export function fromCode(code: string): LevelData {
   } catch {
     throw new Error('This level code is broken. Try copying it again.');
   }
-  const rows = obj.r, texts = obj.t ?? [];
+  return checked(obj.n, obj.r, obj.t ?? [], 'Shared Maze');
+}
+
+/** A level file (.meerkat) is the level as readable JSON. */
+export function toFileText(d: LevelData): string {
+  return JSON.stringify({ game: 'the-labyrinth', version: 1, name: d.name, rows: d.rows, texts: d.texts }, null, 2) + '\n';
+}
+
+/** Read a level file; level codes pasted into a file work too. */
+export function fromFileText(text: string): LevelData {
+  if (text.trim().startsWith(CODE_PREFIX)) return fromCode(text);
+  let obj: { name?: unknown; rows?: unknown; texts?: unknown };
+  try { obj = JSON.parse(text); } catch { throw new Error('This file is not a meerkat level.'); }
+  return checked(obj.name, obj.rows, obj.texts ?? [], 'My Maze');
+}
+
+function checked(name: unknown, rows: unknown, texts: unknown, fallbackName: string): LevelData {
   if (!Array.isArray(rows) || rows.length < 3 || !rows.every(r => typeof r === 'string') ||
       !Array.isArray(texts) || !texts.every(t => typeof t === 'string')) {
-    throw new Error('This level code is broken. Try copying it again.');
+    throw new Error('This level is broken. Try copying it again.');
   }
   const width = (rows[0] as string).length;
   if (width < 3 || width > 80 || rows.length > 80 || rows.some(r => (r as string).length !== width)) {
-    throw new Error('This level code has a strange size.');
+    throw new Error('This level has a strange size.');
   }
-  return { version: 1, name: typeof obj.n === 'string' ? obj.n.slice(0, 40) : 'Shared Maze', rows: rows as string[], texts: texts as string[] };
+  return { version: 1, name: typeof name === 'string' ? name.slice(0, 40) : fallbackName, rows: rows as string[], texts: texts as string[] };
 }
 
 // ---------- checking ----------

@@ -3,7 +3,8 @@
 import type { Assets } from './assets';
 import { audio } from './audio';
 import { LEVEL_1, LEVEL_1_DATA } from './level';
-import { blankLevel, fromCode, type LevelData } from './level-format';
+import { desktop } from './desktop';
+import { blankLevel, fromCode, fromFileText, type LevelData } from './level-format';
 import { LIFT, TILE, WorldRenderer, type Actor } from './renderer';
 import { cleanCode, GuestSession, HostSession, MAX_PLAYERS } from './net/session';
 import type { HostMsg } from './net/protocol';
@@ -218,10 +219,27 @@ export class Menu {
     this.root.replaceChildren(el('div', { class: 'menu' }, el('div', { class: 'menu-card' },
       el('h2', {}, 'My levels'),
       el('ul', { class: 'levels' }, ...items),
+      ...(desktop ? [this.openFileRow()] : []),
       el('div', { class: 'row' },
         this.btn('← Back', 'btn ghost', () => this.showMain()),
         this.btn('Open Meerkat Maze in the editor', 'btn ghost', () => this.opts.edit(LEVEL_1_DATA))),
     )));
+  }
+
+  /** Desktop app: play or edit a level file (.meerkat). */
+  private openFileRow() {
+    const err = el('p', { class: 'error', role: 'alert' });
+    const open = (then: (d: LevelData) => void) => async () => {
+      try {
+        const file = await desktop!.openLevelFile();
+        if (file) then(fromFileText(file.text));
+      } catch (e) { err.textContent = (e as Error).message; }
+    };
+    return el('div', { class: 'col' },
+      el('div', { class: 'row' },
+        this.btn('▶ Play a level file…', 'btn', open(d => this.opts.play(d))),
+        this.btn('✎ Edit a level file…', 'btn ghost', open(d => this.opts.edit(d)))),
+      err);
   }
 
   private showCode() {
