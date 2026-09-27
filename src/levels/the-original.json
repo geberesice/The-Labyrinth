@@ -47,5 +47,8 @@
     "Yes! Right is always right.",
     "Help! I stayed in the red zone too long!",
     "Well, that is like the home of the sun!"
-  ]
+  ],
+  "settings": {
+    "fogRadius": 4
+  }
 }

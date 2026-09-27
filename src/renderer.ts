@@ -39,7 +39,7 @@ export class WorldRenderer {
 
   /** Draw floors, walls, things and actors depth-sorted by row. Coordinates are world pixels. */
   /** Returns speech bubbles to draw on top (in world pixels: centre x, bottom y). */
-  draw(ctx: CanvasRenderingContext2D, time: number, scene: Scene, actors: Actor[], particles: Particle[], player: Actor): Bubble[] {
+  draw(ctx: CanvasRenderingContext2D, time: number, scene: Scene, actors: Actor[], particles: Particle[], talks: (npc: Npc) => boolean = () => false): Bubble[] {
     const { level } = this;
     // --- floor pass ---
     for (let y = 0; y < level.height; y++) {
@@ -59,12 +59,11 @@ export class WorldRenderer {
       for (let x = 0; x < level.width; x++) if (level.tiles[y][x] === 'wall') this.wall(ctx, x, y);
       for (const fn of byRow.get(y) ?? []) fn();
     }
-    // --- speech bubbles for meerkats close to the player ---
+    // --- speech bubbles for meerkats that are talking to the player ---
     const bubbles: Bubble[] = [];
     for (const ac of actors) {
       if (!ac.npc) continue;
-      const d = Math.hypot(ac.x - player.x, ac.y - player.y);
-      if (d < 2.6) bubbles.push({ text: ac.npc.text, x: ac.x * TILE + TILE / 2, y: ac.y * TILE - 10 - (ac.npc.variant === 'spiky' ? 8 : 0) });
+      if (talks(ac.npc)) bubbles.push({ text: ac.npc.text, x: ac.x * TILE + TILE / 2, y: ac.y * TILE - 10 - (ac.npc.variant === 'spiky' ? 8 : 0) });
     }
     return bubbles;
   }

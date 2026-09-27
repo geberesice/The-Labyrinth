@@ -2,6 +2,7 @@ import { loadAssets, type Assets } from './assets';
 import { audio } from './audio';
 import { Editor } from './editor/editor';
 import type { LevelData } from './level-format';
+import { CAMPAIGN } from './levels';
 import { Menu } from './menu';
 import type { GuestSession, HostSession } from './net/session';
 import { Play } from './play';
@@ -38,6 +39,7 @@ class App {
   menu(notice?: string) {
     this.open(() => new Menu(this.a, {
       play: d => this.play(d),
+      playCampaign: i => this.playCampaign(i),
       edit: (d, id) => this.edit(d, id),
       host: (session, d, name) => this.online(d, { role: 'host', session, name }),
       joined: (session, d, me) => this.online(d, { role: 'guest', session, me }),
@@ -51,6 +53,17 @@ class App {
     this.open(() => new Play(this.a, d, {
       backLabel: 'LEAVE', onBack: () => leave(), net,
       onDisconnect: reason => leave(reason),
+    }));
+  }
+
+  /** Level i of the 10; winning offers the next one. */
+  playCampaign(i: number) {
+    const level = CAMPAIGN[i];
+    const hasNext = i + 1 < CAMPAIGN.length;
+    this.open(() => new Play(this.a, level.data, {
+      backLabel: 'MENU',
+      onBack: () => this.menu(),
+      campaign: { id: level.id, number: i + 1, total: CAMPAIGN.length, onNext: hasNext ? () => this.playCampaign(i + 1) : undefined },
     }));
   }
 

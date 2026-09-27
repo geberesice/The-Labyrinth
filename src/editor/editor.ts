@@ -3,7 +3,7 @@ import { KEY_HUES, type Assets, type KeyColor } from '../assets';
 import { audio } from '../audio';
 import type { LiveThing } from '../game/state';
 import { desktop } from '../desktop';
-import { checkLevel, fromCode, fromFileText, NPC_CHARS, toCode, toFileText, toLevel, type LevelData } from '../level-format';
+import { checkLevel, fromCode, fromFileText, NPC_CHARS, toCode, toFileText, toLevel, type LevelData, type LevelSettings } from '../level-format';
 import { drawText } from '../pixelfont';
 import { LIFT, TILE, WorldRenderer, type Actor } from '../renderer';
 import { saveLevel } from '../storage';
@@ -48,6 +48,7 @@ export class Editor {
   private grid: string[][] = [];
   private texts = new Map<string, string>(); // "x,y" -> what the meerkat says
   private name = 'My Maze';
+  private settings: LevelSettings | undefined;
   private savedId: string | undefined;
   private undoStack: string[] = [];
   private tool: Tool = TOOLS[0];
@@ -88,6 +89,7 @@ export class Editor {
 
   private load(d: LevelData) {
     this.name = d.name;
+    this.settings = d.settings;
     this.grid = d.rows.map(r => [...r]);
     this.texts.clear();
     let i = 0;
@@ -98,7 +100,7 @@ export class Editor {
     const rows = this.grid.map(r => r.join(''));
     const texts: string[] = [];
     this.grid.forEach((row, y) => row.forEach((ch, x) => { if (NPC_CHARS.has(ch)) texts.push(this.texts.get(`${x},${y}`) ?? '...'); }));
-    return { version: 1, name: this.name.trim() || 'My Maze', rows, texts };
+    return { version: 1, name: this.name.trim() || 'My Maze', rows, texts, ...(this.settings ? { settings: this.settings } : {}) };
   }
 
   private snapshot() {
@@ -281,9 +283,8 @@ export class Editor {
     const things = lvl.things.map((t, id) => ({ ...t, id, gone: false }));
     const actors: Actor[] = lvl.npcs.map(n => ({ x: n.x, y: n.y, sheet: this.a.meerkats[1], anim: 'idle', dir: 'down', t: 0, npc: n }));
     if (ch === 'S') actors.push({ x: 1, y: 1, sheet: this.a.meerkats[0], anim: 'idle', dir: 'down', t: 0 });
-    const far: Actor = { x: -99, y: -99, sheet: this.a.meerkats[0], anim: 'idle', dir: 'down', t: 0 };
     ctx.translate(-TILE + 4, -TILE + 10);
-    r.draw(ctx, 0.3, { things, barsOpen: false, openGates: new Set() }, actors, [], far);
+    r.draw(ctx, 0.3, { things, barsOpen: false, openGates: new Set() }, actors, []);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (ch === 'L') this.jailMarker(ctx, 4, 10);
     return c;
@@ -458,8 +459,7 @@ export class Editor {
     world.fillRect(0, 0, bw, bh);
     world.save();
     world.translate(ox, oy);
-    const far: Actor = { x: -99, y: -99, sheet: this.a.meerkats[0], anim: 'idle', dir: 'down', t: 0 };
-    this.renderer.draw(world, this.time, this.scene, this.actors, [], far);
+    this.renderer.draw(world, this.time, this.scene, this.actors, []);
 
     // jail spot marker and grid
     this.grid.forEach((row, y) => row.forEach((ch, x) => { if (ch === 'L') this.jailMarker(world, x * TILE, y * TILE); }));

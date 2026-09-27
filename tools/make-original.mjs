@@ -210,6 +210,7 @@ const level = {
     'Help! I stayed in the red zone too long!',  // jail
     'Well, that is like the home of the sun!',   // the spiky sun
   ],
+  settings: { fogRadius: 4 },
 };
 fs.mkdirSync('src/levels', { recursive: true });
 fs.writeFileSync('src/levels/the-original.json', JSON.stringify(level, null, 2) + '\n');

@@ -8,7 +8,8 @@ import { blankLevel, fromCode, fromFileText, type LevelData } from './level-form
 import { LIFT, TILE, WorldRenderer, type Actor } from './renderer';
 import { cleanCode, GuestSession, HostSession, MAX_PLAYERS, savedPeerServer, serverOptions, setPeerServer, testPeerServer } from './net/session';
 import type { HostMsg } from './net/protocol';
-import { BUILTIN_LEVELS } from './levels';
+import { BUILTIN_LEVELS, CAMPAIGN } from './levels';
+import { isUnlocked, loadProgress } from './progress';
 import { deleteLevel, listLevels } from './storage';
 import { el } from './ui';
 
@@ -19,6 +20,8 @@ const world = buffer.getContext('2d')!;
 
 export interface MenuOptions {
   play: (d: LevelData) => void;
+  /** level i of the 10 */
+  playCampaign: (i: number) => void;
   edit: (d: LevelData, id?: string) => void;
   /** start an online game as the host */
   host: (session: HostSession, d: LevelData, name: string) => void;
@@ -42,7 +45,7 @@ export class Menu {
   private actors: Actor[];
   private things = LEVEL_1.things.map((t, id) => ({ ...t, id, gone: false }));
 
-  constructor(private a: Assets, private opts: MenuOptions, private root: HTMLElement) {
+  constructor(a: Assets, private opts: MenuOptions, private root: HTMLElement) {
     this.renderer = new WorldRenderer(a, LEVEL_1);
     this.actors = LEVEL_1.npcs.map(n => ({ x: n.x, y: n.y, sheet: a.meerkats[n.skin], anim: 'sentry' as const, dir: 'down' as const, t: n.x, npc: n }));
     this.actors.push({ x: 8, y: 7, sheet: a.meerkats[0], anim: 'sentry', dir: 'down', t: 0 });
@@ -93,7 +96,11 @@ export class Menu {
   private showFriends() {
     this.leaveLobby();
     const name = el('input', { id: 'player-name', maxlength: '16', value: savedName(), placeholder: 'Your name', 'aria-label': 'Your name' });
-    const levels = [...BUILTIN_LEVELS.map(l => ({ id: l.id, data: l.data })), ...listLevels().map(l => ({ id: l.id, data: l.data }))];
+    const ids = CAMPAIGN.map(l => l.id), progress = loadProgress();
+    const levels = [
+      ...BUILTIN_LEVELS.filter((_, i) => isUnlocked(ids, i, progress)).map(l => ({ id: l.id, data: l.data })),
+      ...listLevels().map(l => ({ id: l.id, data: l.data })),
+    ];
     const pick = el('select', { id: 'host-level', 'aria-label': 'Level' },
       ...levels.map(l => el('option', l.id === 'meerkat-maze' ? { value: l.id, selected: '' } : { value: l.id }, l.data.name)));
     const code = el('input', { id: 'join-code', maxlength: '8', placeholder: 'ABC123', autocomplete: 'off', 'aria-label': 'Game code' });
@@ -246,22 +253,42 @@ export class Menu {
     return b;
   }
 
-  /** The levels that come with the game. */
+  /** The 10 levels, easiest first; finishing one opens the next. */
   private showLevels() {
     this.leaveLobby();
-    const items = BUILTIN_LEVELS.map(l => el('li', {},
-      el('span', { class: 'lvl-text' }, el('span', { class: 'lvl-name' }, l.data.name), el('span', { class: 'lvl-blurb' }, l.blurb)),
-      el('span', { class: 'lvl-size' }, `${l.data.rows[0].length}×${l.data.rows.length}`),
-      this.btn('Play', 'btn small play', () => this.opts.play(l.data)),
-      this.btn('Edit', 'btn small ghost', () => this.opts.edit({ ...l.data, name: `${l.data.name} (my copy)` }))));
-    this.root.replaceChildren(el('div', { class: 'menu' }, el('div', { class: 'menu-card' },
-      el('h2', {}, 'Play'),
+    const progress = loadProgress();
+    const ids = CAMPAIGN.map(l => l.id);
+    const time = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+    const items = CAMPAIGN.map((l, i) => {
+      const open = isUnlocked(ids, i, progress);
+      const best = progress?.[l.id];
+      const dots = el('span', { class: 'lvl-dots', 'aria-label': `difficulty ${l.difficulty} of 5` }, '●'.repeat(l.difficulty) + '○'.repeat(5 - l.difficulty));
+      const status = best ? el('span', { class: 'lvl-best' }, `✓ ${time(best.time)} · ${best.coins} coins`)
+        : open ? el('span', { class: 'lvl-best' }, '') : el('span', { class: 'lvl-lock' }, '🔒 finish the level before');
+      return el('li', { class: open ? '' : 'locked' },
+        el('span', { class: 'lvl-num' }, String(i + 1)),
+        el('span', { class: 'lvl-text' },
+          el('span', { class: 'lvl-name' }, l.data.name, ' ', dots),
+          el('span', { class: 'lvl-blurb' }, l.blurb),
+          status),
+        ...(open ? [
+          this.btn('Play', 'btn small play', () => this.opts.playCampaign(i)),
+          this.btn('Edit', 'btn small ghost', () => this.opts.edit({ ...l.data, name: `${l.data.name} (my copy)` })),
+        ] : []));
+    });
+    const done = CAMPAIGN.filter(l => progress?.[l.id]).length;
+    this.root.replaceChildren(el('div', { class: 'menu' }, el('div', { class: 'menu-card wide' },
+      el('h2', {}, `Play · ${done}/${CAMPAIGN.length} levels done`),
       el('ul', { class: 'levels' }, ...items),
       el('div', { class: 'row' },
         this.btn('← Back', 'btn ghost', () => this.showMain()),
         this.btn(`My levels (${listLevels().length})`, 'btn ghost', () => this.showMyLevels())),
     )));
-    (this.root.querySelector('.btn.play') as HTMLButtonElement | null)?.focus();
+    // start on the first level that is open but not finished yet
+    const next = CAMPAIGN.findIndex((l, i) => isUnlocked(ids, i, progress) && !progress?.[l.id]);
+    const buttons = this.root.querySelectorAll<HTMLButtonElement>('.levels .btn.play');
+    (buttons[next >= 0 ? next : 0] ?? buttons[0])?.focus();
+    buttons[next >= 0 ? next : 0]?.scrollIntoView({ block: 'nearest' });
   }
 
   private showMyLevels() {
@@ -343,8 +370,7 @@ export class Menu {
     world.fillRect(0, 0, bw, bh);
     world.save();
     world.translate(-camX, -camY);
-    const far: Actor = { x: -99, y: -99, sheet: this.a.meerkats[0], anim: 'idle', dir: 'down', t: 0 };
-    this.renderer.draw(world, this.time, { things: this.things, barsOpen: false, openGates: new Set() }, this.actors, [], far);
+    this.renderer.draw(world, this.time, { things: this.things, barsOpen: false, openGates: new Set() }, this.actors, []);
     world.restore();
     world.fillStyle = 'rgba(26, 18, 32, 0.55)';
     world.fillRect(0, 0, bw, bh);

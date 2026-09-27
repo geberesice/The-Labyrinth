@@ -54,6 +54,13 @@
     .levels .lvl-name { flex: 1; font-weight: bold; overflow-wrap: anywhere; }
     .levels .lvl-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .levels .lvl-blurb { font-size: .8rem; color: var(--muted); }
+    .levels .lvl-num { width: 1.6em; height: 1.6em; border-radius: 50%; display: grid; place-items: center; background: var(--purple); font-weight: bold; flex: none; font-variant-numeric: tabular-nums; }
+    .levels .lvl-dots { color: var(--gold); font-size: .7rem; letter-spacing: .05em; margin-left: 4px; }
+    .levels .lvl-best { font-size: .75rem; color: var(--green); }
+    .levels .lvl-lock { font-size: .75rem; color: var(--muted); }
+    .levels li.locked { opacity: .55; }
+    .levels li.locked .lvl-num { background: var(--panel); }
+    .menu-card.wide { width: min(560px, 100%); }
     .levels .lvl-size { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
     .levels .empty { color: var(--muted); }
     .muted { color: var(--muted); }
