@@ -95,7 +95,7 @@ export class Menu {
     const name = el('input', { id: 'player-name', maxlength: '16', value: savedName(), placeholder: 'Your name', 'aria-label': 'Your name' });
     const levels = [...BUILTIN_LEVELS.map(l => ({ id: l.id, data: l.data })), ...listLevels().map(l => ({ id: l.id, data: l.data }))];
     const pick = el('select', { id: 'host-level', 'aria-label': 'Level' },
-      ...levels.map(l => el('option', { value: l.id }, l.data.name)));
+      ...levels.map(l => el('option', l.id === 'meerkat-maze' ? { value: l.id, selected: '' } : { value: l.id }, l.data.name)));
     const code = el('input', { id: 'join-code', maxlength: '8', placeholder: 'ABC123', autocomplete: 'off', 'aria-label': 'Game code' });
     code.addEventListener('input', () => { code.value = cleanCode(code.value); });
     const err = el('p', { class: 'error', role: 'alert' });

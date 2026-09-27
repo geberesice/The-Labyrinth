@@ -8,7 +8,13 @@ import { Play } from './play';
 
 // Screens: menu -> play, menu -> editor -> play-test -> back to editor.
 
-interface Screen { update(dt: number): void; render(): void; dispose(): void }
+interface Screen {
+  update(dt: number): void;
+  render(): void;
+  dispose(): void;
+  /** true while this screen runs the game for other players (hosting online) */
+  readonly runsForOthers?: boolean;
+}
 
 const ui = document.getElementById('ui') as HTMLElement;
 
@@ -68,6 +74,7 @@ class App {
 
   update(dt: number) { this.screen?.update(dt); }
   render() { this.screen?.render(); }
+  get runsForOthers() { return this.screen?.runsForOthers === true; }
 }
 
 async function boot() {
@@ -75,14 +82,31 @@ async function boot() {
   const app = new App(assets);
   Object.assign(window, { app, audio }); // handy for testing in the console
   let last = performance.now();
+  let lastFrame = last;
   const frame = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    lastFrame = now;
     app.update(dt);
     app.render();
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+
+  // Browsers stop requestAnimationFrame while the tab or window is hidden. When we host an online
+  // game, friends depend on our game loop, so a worker (whose timer keeps going in the background)
+  // keeps the game running until the window is visible again.
+  try {
+    const src = URL.createObjectURL(new Blob(['setInterval(() => postMessage(0), 50);'], { type: 'text/javascript' }));
+    const ticker = new Worker(src);
+    ticker.onmessage = () => {
+      const now = performance.now();
+      if (now - lastFrame < 250 || !app.runsForOthers) return; // the normal loop is running
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      app.update(dt);
+    };
+  } catch { /* no workers: the game only runs while visible */ }
 }
 
 boot().catch(err => {
