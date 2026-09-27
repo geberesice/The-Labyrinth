@@ -46,3 +46,20 @@ describe('checking levels', () => {
     expect(canReachExit(LEVEL_1)).toBe(true);
   });
 });
+
+describe('levels that come with the game', () => {
+  it('have no problems and can be won', async () => {
+    const { BUILTIN_LEVELS } = await import('../src/levels');
+    for (const l of BUILTIN_LEVELS) {
+      expect(checkLevel(l.data), l.data.name).toEqual([]);
+      const lvl = toLevel(l.data);
+      expect(lvl.npcs.length, `${l.data.name}: one text per meerkat`).toBe(l.data.texts.length);
+    }
+  });
+  it('The Original needs every key, in order: blue, green, orange, red', async () => {
+    const { BUILTIN_LEVELS } = await import('../src/levels');
+    const d = BUILTIN_LEVELS.find(l => l.id === 'the-original')!.data;
+    const without = (gate: string) => canReachExit(toLevel({ ...d, rows: d.rows.map(r => r.replaceAll(gate.toLowerCase(), '.')) }));
+    for (const k of ['B', 'G', 'O', 'R']) expect(without(k), `exit reachable without the ${k} key`).toBe(false);
+  });
+});

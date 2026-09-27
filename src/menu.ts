@@ -8,6 +8,7 @@ import { blankLevel, fromCode, fromFileText, type LevelData } from './level-form
 import { LIFT, TILE, WorldRenderer, type Actor } from './renderer';
 import { cleanCode, GuestSession, HostSession, MAX_PLAYERS } from './net/session';
 import type { HostMsg } from './net/protocol';
+import { BUILTIN_LEVELS } from './levels';
 import { deleteLevel, listLevels } from './storage';
 import { el } from './ui';
 
@@ -75,7 +76,7 @@ export class Menu {
       el('h1', {}, 'The Labyrinth'),
       el('p', { class: 'tagline' }, 'Help the meerkat find the exit!'),
       ...(this.opts.notice ? [el('p', { class: 'notice', role: 'status' }, this.opts.notice)] : []),
-      this.btn('▶  Play: Meerkat Maze', 'btn play big', () => this.opts.play(LEVEL_1_DATA)),
+      this.btn('▶  Play', 'btn play big', () => this.showLevels()),
       this.btn(`My levels (${saved.length})`, 'btn big', () => this.showMyLevels()),
       this.btn('✎  Make a level', 'btn big', () => this.opts.edit(blankLevel())),
       this.btn('👥  Play with friends', 'btn big', () => this.showFriends()),
@@ -92,7 +93,7 @@ export class Menu {
   private showFriends() {
     this.leaveLobby();
     const name = el('input', { id: 'player-name', maxlength: '16', value: savedName(), placeholder: 'Your name', 'aria-label': 'Your name' });
-    const levels = [{ id: 'lvl1', data: LEVEL_1_DATA }, ...listLevels().map(l => ({ id: l.id, data: l.data }))];
+    const levels = [...BUILTIN_LEVELS.map(l => ({ id: l.id, data: l.data })), ...listLevels().map(l => ({ id: l.id, data: l.data }))];
     const pick = el('select', { id: 'host-level', 'aria-label': 'Level' },
       ...levels.map(l => el('option', { value: l.id }, l.data.name)));
     const code = el('input', { id: 'join-code', maxlength: '8', placeholder: 'ABC123', autocomplete: 'off', 'aria-label': 'Game code' });
@@ -205,6 +206,24 @@ export class Menu {
     return b;
   }
 
+  /** The levels that come with the game. */
+  private showLevels() {
+    this.leaveLobby();
+    const items = BUILTIN_LEVELS.map(l => el('li', {},
+      el('span', { class: 'lvl-text' }, el('span', { class: 'lvl-name' }, l.data.name), el('span', { class: 'lvl-blurb' }, l.blurb)),
+      el('span', { class: 'lvl-size' }, `${l.data.rows[0].length}×${l.data.rows.length}`),
+      this.btn('Play', 'btn small play', () => this.opts.play(l.data)),
+      this.btn('Edit', 'btn small ghost', () => this.opts.edit({ ...l.data, name: `${l.data.name} (my copy)` }))));
+    this.root.replaceChildren(el('div', { class: 'menu' }, el('div', { class: 'menu-card' },
+      el('h2', {}, 'Play'),
+      el('ul', { class: 'levels' }, ...items),
+      el('div', { class: 'row' },
+        this.btn('← Back', 'btn ghost', () => this.showMain()),
+        this.btn(`My levels (${listLevels().length})`, 'btn ghost', () => this.showMyLevels())),
+    )));
+    (this.root.querySelector('.btn.play') as HTMLButtonElement | null)?.focus();
+  }
+
   private showMyLevels() {
     this.leaveLobby();
     const list = listLevels();
@@ -223,6 +242,7 @@ export class Menu {
       el('div', { class: 'row' },
         this.btn('← Back', 'btn ghost', () => this.showMain()),
         this.btn('Open Meerkat Maze in the editor', 'btn ghost', () => this.opts.edit(LEVEL_1_DATA))),
+      el('p', { class: 'muted' }, 'Tip: any level from the Play list can be opened in the editor too.'),
     )));
   }
 
