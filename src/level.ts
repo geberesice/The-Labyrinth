@@ -1,4 +1,5 @@
 import type { KeyColor } from './assets';
+import type { MinigameId } from './game/minigames';
 
 export type Tile = 'wall' | 'floor';
 
@@ -29,6 +30,10 @@ export interface Level {
   jail: { x: number; y: number } | null;
   /** how far the meerkat can see (tiles); smaller = darker level */
   fogRadius?: number;
+  /** a minigame has its own rules (see game/minigames.ts) */
+  minigame?: MinigameId;
+  /** the seed the minigame level was made from (the floor is red uses it for its flashes) */
+  seed?: number;
 }
 
 const KEY_CHARS: Record<string, KeyColor> = { y: 'yellow', b: 'blue', r: 'red', g: 'green', o: 'orange', p: 'pink' };
@@ -42,7 +47,7 @@ const KEY_CHARS: Record<string, KeyColor> = { y: 'yellow', b: 'blue', r: 'red', 
  *   y b r g o p  key (yellow, blue, red, green, orange, pink)
  *   Y B R G O P  gate of that colour
  */
-export function parseLevel(name: string, rows: string[], texts: string[], settings: { fogRadius?: number } = {}): Level {
+export function parseLevel(name: string, rows: string[], texts: string[], settings: { fogRadius?: number; minigame?: MinigameId; seed?: number } = {}): Level {
   const height = rows.length, width = rows[0].length;
   rows.forEach((r, i) => { if (r.length !== width) throw new Error(`Row ${i} of ${name} has ${r.length} chars, expected ${width}`); });
   const tiles: Tile[][] = [], timed: boolean[][] = [], things: Thing[] = [], npcs: Npc[] = [];
@@ -73,7 +78,7 @@ export function parseLevel(name: string, rows: string[], texts: string[], settin
       }
     });
   });
-  return { name, width, height, tiles, timed, things, npcs, start, jail, fogRadius: settings.fogRadius };
+  return { name, width, height, tiles, timed, things, npcs, start, jail, fogRadius: settings.fogRadius, minigame: settings.minigame, seed: settings.seed };
 }
 
 /** First level. Keys unlock in order: yellow key -> yellow gate -> blue key -> blue gate -> exit. */

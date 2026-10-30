@@ -35,6 +35,19 @@ blocks the light, so what is behind it stays hidden. The star lights up the whol
 out so you can see the way. Other meerkats only talk when you are next to them (2 squares) and
 no wall is in between.
 
+## Minigames
+
+Choose **Minigames** on the menu for quick games with a new maze every time (they work in
+**Play with friends** too):
+
+| Minigame | How it works |
+|---|---|
+| Find the Key | The exit is right next to you, but locked. The key is hidden far away in the dark. **HOT** / **COLD** at the top tells you how close you are. 3 minutes! |
+| The Floor Is Red | Parts of the floor flash, then turn red. Don't be standing there! Red floor costs a heart (you have 3). Last 60 seconds to win. |
+| Coin Rush | Grab as many coins as you can in 60 seconds. |
+
+Your best time (Find the Key) or most coins are kept on the Minigames list.
+
 ## How to play
 
 | On the map | What it does |

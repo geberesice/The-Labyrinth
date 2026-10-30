@@ -1,6 +1,7 @@
 // Game rules. Pure logic, no drawing, so it can be unit tested and later run by the multiplayer host.
 import type { KeyColor } from '../assets';
 import { isWall, type Level, type Thing } from '../level';
+import { floorAt, floorWaves, FLOOR_RULES, minigameInfo, type FloorWave, type MinigameInfo } from './minigames';
 
 export type Dir = 'up' | 'down' | 'left' | 'right';
 export const DIRS: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -39,6 +40,10 @@ export interface Player {
   moodLeft: number;
   /** true while pushing a crate this step */
   pushing: boolean;
+  /** the floor is red: hearts left, seconds the red floor can't hurt you, and out of the game */
+  lives: number;
+  hurtLeft: number;
+  out: boolean;
 }
 
 export type LiveThing = Thing & {
@@ -54,7 +59,9 @@ export type GameEvent =
   | { type: 'jailed' | 'released' | 'zone-enter' | 'zone-leave'; player: number; x: number; y: number }
   | { type: 'bailed'; player: number; x: number; y: number; freed: number[] }
   | { type: 'gate'; x: number; y: number; player: number; color: KeyColor }
-  | { type: 'win'; player: number; x: number; y: number };
+  | { type: 'win'; player: number; x: number; y: number }
+  | { type: 'burned' | 'out'; player: number; x: number; y: number }
+  | { type: 'lost'; player: number; x: number; y: number };
 
 export interface Game {
   level: Level;
@@ -65,6 +72,13 @@ export interface Game {
   time: number;
   won: boolean;
   wonAt: number;
+  /** minigames can be lost (time is up, or the red floor got everybody) */
+  lost: boolean;
+  lostAt: number;
+  /** the minigame being played, or null for a normal level */
+  mini: MinigameInfo | null;
+  /** the floor is red: every flash of the floor */
+  waves: FloorWave[];
   barsOpen: boolean;
   /** cells inside the jail (behind the bars) */
   jailCells: Set<string>;
@@ -77,9 +91,11 @@ export function createGame(level: Level, playerCount = 1): Game {
   const g: Game = {
     level,
     things: level.things.map((t, id) => ({ ...t, id, gone: false })),
-    players: [], coins: 0, gems: 0, time: 0, won: false, wonAt: 0, barsOpen: false,
+    players: [], coins: 0, gems: 0, time: 0, won: false, wonAt: 0, lost: false, lostAt: 0, barsOpen: false,
     jailCells: findJailCells(level), events: [],
+    mini: level.minigame ? minigameInfo(level.minigame) : null, waves: [],
   };
+  if (g.mini?.id === 'floor-is-red') g.waves = floorWaves(level, level.seed ?? 1, RULES.stepTime, g.mini.timeLimit);
   for (let i = 0; i < playerCount; i++) addPlayer(g);
   return g;
 }
@@ -91,6 +107,7 @@ export function addPlayer(g: Game, name?: string): Player {
   const p: Player = {
     id, name: name ?? `Meerkat ${id + 1}`, skin: id % 5, cx: x, cy: y, fromX: x, fromY: y, stepT: 1, dir: 'down',
     keys: new Set(), zoneTime: null, jailLeft: null, starLeft: 0, mood: 'none', moodLeft: 0, pushing: false,
+    lives: FLOOR_RULES.lives, hurtLeft: 0, out: false,
   };
   g.players.push(p);
   return p;
@@ -172,7 +189,7 @@ export function step(g: Game, inputs: (Dir | null | undefined)[], dt: number, ac
   for (const p of g.players) {
     p.starLeft = Math.max(0, p.starLeft - dt);
     if (p.moodLeft > 0) { p.moodLeft -= dt; if (p.moodLeft <= 0) p.mood = g.won ? p.mood : 'none'; }
-    if (g.won) continue;
+    if (g.won || g.lost || p.out) continue;
 
     // jail countdown (solo: the door opens by itself)
     if (p.jailLeft !== null) {
@@ -203,6 +220,8 @@ export function step(g: Game, inputs: (Dir | null | undefined)[], dt: number, ac
       g.events.push({ type: 'zone-leave', player: p.id, x: p.cx, y: p.cy });
     }
   }
+
+  if (g.mini && !g.won && !g.lost) minigameRules(g, dt);
 
   // bars close again once nobody is inside the jail or in the doorway
   if (g.barsOpen) {
@@ -236,6 +255,46 @@ function tryMove(g: Game, p: Player, dir: Dir) {
   p.fromX = p.cx; p.fromY = p.cy;
   p.cx = nx; p.cy = ny;
   p.stepT = 0;
+}
+
+/** What makes a minigame different: the red floor, running out of time, collecting everything. */
+function minigameRules(g: Game, dt: number) {
+  const mini = g.mini!;
+  if (mini.id === 'floor-is-red') {
+    for (const p of g.players) {
+      p.hurtLeft = Math.max(0, p.hurtLeft - dt);
+      if (p.out || p.hurtLeft > 0) continue;
+      const pos = playerPos(p);
+      if (floorAt(g.level, g.waves, g.time, Math.round(pos.x), Math.round(pos.y)) !== 'red') continue;
+      p.lives--;
+      const ev = { player: p.id, x: p.cx, y: p.cy };
+      if (p.lives > 0) {
+        p.hurtLeft = FLOOR_RULES.hurtSeconds;
+        g.events.push({ type: 'burned', ...ev });
+      } else {
+        p.out = true; p.mood = 'sad'; p.moodLeft = Infinity; p.pushing = false;
+        g.events.push({ type: 'out', ...ev });
+      }
+    }
+    if (g.players.length && g.players.every(p => p.out)) return endMinigame(g, 'lose');
+  }
+  if (mini.id === 'coin-rush' && !g.things.some(t => !t.gone && (t.kind === 'coin' || t.kind === 'gem'))) return endMinigame(g, 'win');
+  if (g.time >= mini.timeLimit) endMinigame(g, mini.timeUp);
+}
+
+function endMinigame(g: Game, how: 'win' | 'lose') {
+  const still = g.players.filter(p => !p.out);
+  const first = still[0] ?? g.players[0];
+  const ev = { player: first?.id ?? 0, x: first?.cx ?? g.level.start.x, y: first?.cy ?? g.level.start.y };
+  if (how === 'win') {
+    g.won = true; g.wonAt = g.time;
+    for (const p of still) { p.mood = 'celebrate'; p.moodLeft = Infinity; }
+    g.events.push({ type: 'win', ...ev });
+  } else {
+    g.lost = true; g.lostAt = g.time;
+    for (const p of g.players) { p.mood = 'sad'; p.moodLeft = Infinity; }
+    g.events.push({ type: 'lost', ...ev });
+  }
 }
 
 /** Called when a step finishes: pick things up, reach the exit. */
