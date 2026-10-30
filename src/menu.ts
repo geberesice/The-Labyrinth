@@ -9,6 +9,7 @@ import { LIFT, TILE, WorldRenderer, type Actor } from './renderer';
 import { cleanCode, GuestSession, HostSession, MAX_PLAYERS, savedPeerServer, serverOptions, setPeerServer, testPeerServer } from './net/session';
 import type { HostMsg } from './net/protocol';
 import { BUILTIN_LEVELS, CAMPAIGN } from './levels';
+import { makeMinigame, MINIGAMES, newSeed, type MinigameId } from './game/minigames';
 import { isUnlocked, loadProgress } from './progress';
 import { deleteLevel, listLevels } from './storage';
 import { el } from './ui';
@@ -22,6 +23,7 @@ export interface MenuOptions {
   play: (d: LevelData) => void;
   /** level i of the 10 */
   playCampaign: (i: number) => void;
+  playMinigame: (id: MinigameId) => void;
   edit: (d: LevelData, id?: string) => void;
   /** start an online game as the host */
   host: (session: HostSession, d: LevelData, name: string) => void;
@@ -80,6 +82,7 @@ export class Menu {
       el('p', { class: 'tagline' }, 'Help the meerkat find the exit!'),
       ...(this.opts.notice ? [el('p', { class: 'notice', role: 'status' }, this.opts.notice)] : []),
       this.btn('▶  Play', 'btn play big', () => this.showLevels()),
+      this.btn('🎲  Minigames', 'btn big', () => this.showMinigames()),
       this.btn(`My levels (${saved.length})`, 'btn big', () => this.showMyLevels()),
       this.btn('✎  Make a level', 'btn big', () => this.opts.edit(blankLevel())),
       this.btn('👥  Play with friends', 'btn big', () => this.showFriends()),
@@ -102,7 +105,13 @@ export class Menu {
       ...listLevels().map(l => ({ id: l.id, data: l.data })),
     ];
     const pick = el('select', { id: 'host-level', 'aria-label': 'Level' },
-      ...levels.map(l => el('option', l.id === 'meerkat-maze' ? { value: l.id, selected: '' } : { value: l.id }, l.data.name)));
+      ...levels.map(l => el('option', l.id === 'meerkat-maze' ? { value: l.id, selected: '' } : { value: l.id }, l.data.name)),
+      el('optgroup', { label: 'Minigames' }, ...MINIGAMES.map(m => el('option', { value: `mini:${m.id}` }, m.name))));
+    // a minigame gets a new maze every time you host it
+    const chosen = () => {
+      const mini = MINIGAMES.find(m => `mini:${m.id}` === pick.value);
+      return mini ? makeMinigame(mini.id, newSeed()) : levels.find(l => l.id === pick.value)!.data;
+    };
     const code = el('input', { id: 'join-code', maxlength: '8', placeholder: 'ABC123', autocomplete: 'off', 'aria-label': 'Game code' });
     code.addEventListener('input', () => { code.value = cleanCode(code.value); });
     const err = el('p', { class: 'error', role: 'alert' });
@@ -122,7 +131,7 @@ export class Menu {
           el('label', { class: 'field' }, el('span', {}, 'Level'), pick),
           this.btn('Host', 'btn play', () => {
             const n = myName();
-            if (n) this.showHostLobby(levels.find(l => l.id === pick.value)!.data, n);
+            if (n) this.showHostLobby(chosen(), n);
           })),
         el('div', { class: 'col' },
           el('h3', {}, 'Join a game'),
@@ -289,6 +298,33 @@ export class Menu {
     const buttons = this.root.querySelectorAll<HTMLButtonElement>('.levels .btn.play');
     (buttons[next >= 0 ? next : 0] ?? buttons[0])?.focus();
     buttons[next >= 0 ? next : 0]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** Short games with their own rules; a new maze every time. */
+  private showMinigames() {
+    this.leaveLobby();
+    const progress = loadProgress();
+    const time = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+    const icons: Record<MinigameId, string> = { 'find-the-key': '🔑', 'floor-is-red': '🔥', 'coin-rush': '🪙' };
+    const items = MINIGAMES.map(m => {
+      const best = progress?.[`mini:${m.id}`];
+      const result = !best ? '' : m.best === 'time' ? `✓ best time ${time(best.time)}`
+        : m.id === 'floor-is-red' ? `✓ survived! best ${best.coins} coins` : `✓ best ${best.coins} coins`;
+      return el('li', {},
+        el('span', { class: 'lvl-num', 'aria-hidden': 'true' }, icons[m.id]),
+        el('span', { class: 'lvl-text' },
+          el('span', { class: 'lvl-name' }, m.name),
+          el('span', { class: 'lvl-blurb' }, m.blurb),
+          el('span', { class: 'lvl-best' }, result)),
+        this.btn('Play', 'btn small play', () => this.opts.playMinigame(m.id)));
+    });
+    this.root.replaceChildren(el('div', { class: 'menu' }, el('div', { class: 'menu-card wide' },
+      el('h2', {}, 'Minigames'),
+      el('p', { class: 'muted' }, 'Quick games with a new maze every time. You can play them with friends too!'),
+      el('ul', { class: 'levels' }, ...items),
+      this.btn('← Back', 'btn ghost', () => this.showMain()),
+    )));
+    this.root.querySelector<HTMLButtonElement>('.levels .btn.play')?.focus();
   }
 
   private showMyLevels() {

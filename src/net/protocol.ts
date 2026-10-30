@@ -4,19 +4,20 @@ import type { KeyColor } from '../assets';
 import type { Dir, Game, GameEvent, Mood, Player } from '../game/state';
 import type { LevelData } from '../level-format';
 
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 
 export interface PlayerSnap {
   id: number; name: string; skin: number;
   cx: number; cy: number; fromX: number; fromY: number; stepT: number; dir: Dir;
   keys: KeyColor[]; zoneTime: number | null; jailLeft: number | null; starLeft: number;
   mood: Mood; moodLeft: number; pushing: boolean;
+  lives: number; hurtLeft: number; out: boolean;
 }
 
 export interface ThingSnap { id: number; x: number; y: number; gone: boolean; fromX?: number; fromY?: number; slideT?: number }
 
 export interface Snapshot {
-  time: number; coins: number; gems: number; won: boolean; wonAt: number; barsOpen: boolean;
+  time: number; coins: number; gems: number; won: boolean; wonAt: number; lost: boolean; lostAt: number; barsOpen: boolean;
   players: PlayerSnap[];
   things: ThingSnap[];
   /** things that happened since the last snapshot (for sounds and effects) */
@@ -36,11 +37,12 @@ export type HostMsg =
 
 export function snapshot(g: Game, events: GameEvent[]): Snapshot {
   return {
-    time: g.time, coins: g.coins, gems: g.gems, won: g.won, wonAt: g.wonAt, barsOpen: g.barsOpen,
+    time: g.time, coins: g.coins, gems: g.gems, won: g.won, wonAt: g.wonAt, lost: g.lost, lostAt: g.lostAt, barsOpen: g.barsOpen,
     players: g.players.map(p => ({
       id: p.id, name: p.name, skin: p.skin, cx: p.cx, cy: p.cy, fromX: p.fromX, fromY: p.fromY,
       stepT: +p.stepT.toFixed(3), dir: p.dir, keys: [...p.keys], zoneTime: p.zoneTime, jailLeft: p.jailLeft,
       starLeft: p.starLeft, mood: p.mood, moodLeft: Number.isFinite(p.moodLeft) ? p.moodLeft : 9999, pushing: p.pushing,
+      lives: p.lives, hurtLeft: +p.hurtLeft.toFixed(2), out: p.out,
     })),
     // only things that can change: picked-up items and crates
     things: g.things
@@ -52,7 +54,7 @@ export function snapshot(g: Game, events: GameEvent[]): Snapshot {
 
 /** Copy a snapshot into the guest's local copy of the game. */
 export function applySnapshot(g: Game, s: Snapshot) {
-  g.time = s.time; g.coins = s.coins; g.gems = s.gems; g.won = s.won; g.wonAt = s.wonAt; g.barsOpen = s.barsOpen;
+  g.time = s.time; g.coins = s.coins; g.gems = s.gems; g.won = s.won; g.wonAt = s.wonAt; g.lost = s.lost; g.lostAt = s.lostAt; g.barsOpen = s.barsOpen;
   const old = new Map(g.players.map(p => [p.id, p]));
   g.players = s.players.map(ps => {
     const p: Player = old.get(ps.id) ?? ({} as Player);

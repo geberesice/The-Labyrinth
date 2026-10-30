@@ -1,5 +1,6 @@
 // Saving, loading and checking levels. Pure logic, no DOM.
 import { KEY_HUES, type KeyColor } from './assets';
+import type { MinigameId } from './game/minigames';
 import { parseLevel, type Level } from './level';
 
 /** A level as it is saved: the character map (see parseLevel) plus what each meerkat says. */
@@ -15,6 +16,9 @@ export interface LevelData {
 export interface LevelSettings {
   /** how far the meerkat can see, in tiles (default 5) */
   fogRadius?: number;
+  /** minigame levels are made by game/minigames.ts */
+  minigame?: MinigameId;
+  seed?: number;
 }
 
 export const NPC_CHARS = new Set(['n', 'j', '@']);

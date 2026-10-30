@@ -32,6 +32,8 @@ export interface Scene {
   barsOpen: boolean;
   /** gates that the player may pass (they sink into the ground) */
   openGates: Set<LiveThing>;
+  /** the floor is red: which tiles flash (about to turn red) or are red right now */
+  floor?: (x: number, y: number) => 'warn' | 'red' | null;
 }
 
 export class WorldRenderer {
@@ -47,6 +49,8 @@ export class WorldRenderer {
         if (level.tiles[y][x] === 'wall') continue;
         this.floor(ctx, x, y);
         if (level.timed[y][x]) this.timedZone(ctx, x, y, time);
+        const hot = scene.floor?.(x, y);
+        if (hot) this.hotFloor(ctx, x, y, hot, time);
       }
     }
     // --- depth pass: row by row, walls/blocks first, then things and actors standing in that row ---
@@ -99,6 +103,32 @@ export class WorldRenderer {
       if (edge(x, y + 1)) ctx.fillRect(x * TILE + o, y * TILE + TILE - 1, 2, 1);
       if (edge(x - 1, y)) ctx.fillRect(x * TILE, y * TILE + o, 1, 2);
       if (edge(x + 1, y)) ctx.fillRect(x * TILE + TILE - 1, y * TILE + o, 1, 2);
+    }
+  }
+
+  /** The floor is red: flashing tiles blink orange, red tiles glow and bubble. */
+  private hotFloor(ctx: CanvasRenderingContext2D, x: number, y: number, state: 'warn' | 'red', time: number) {
+    const px = x * TILE, py = y * TILE;
+    if (state === 'warn') {
+      const on = Math.floor(time * 8) % 2 === 0;
+      ctx.fillStyle = on ? 'rgba(255, 120, 40, 0.45)' : 'rgba(255, 200, 80, 0.2)';
+      ctx.fillRect(px, py, TILE, TILE);
+      ctx.fillStyle = on ? '#ff5a2a' : '#ffb84a';
+      ctx.fillRect(px, py, TILE, 1); ctx.fillRect(px, py + TILE - 1, TILE, 1);
+      ctx.fillRect(px, py, 1, TILE); ctx.fillRect(px + TILE - 1, py, 1, TILE);
+      return;
+    }
+    ctx.fillStyle = '#c0201a';
+    ctx.fillRect(px, py, TILE, TILE);
+    ctx.fillStyle = `rgba(255, 90, 40, ${0.35 + 0.2 * Math.sin(time * 6 + x + y * 2)})`;
+    ctx.fillRect(px + 1, py + 1, TILE - 2, TILE - 2);
+    // bubbles, different on every tile
+    const h = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+    for (let i = 0; i < 2; i++) {
+      const phase = (time * 1.5 + ((h >>> (i * 8)) & 255) / 255) % 1;
+      const bx = px + 3 + ((h >>> (i * 5 + 3)) % 10), by = py + 12 - Math.floor(phase * 9);
+      ctx.fillStyle = phase < 0.8 ? '#ffb84a' : '#fff4d6';
+      ctx.fillRect(bx, by, phase < 0.8 ? 2 : 1, phase < 0.8 ? 2 : 1);
     }
   }
 

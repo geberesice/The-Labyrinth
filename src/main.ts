@@ -1,6 +1,7 @@
 import { loadAssets, type Assets } from './assets';
 import { audio } from './audio';
 import { Editor } from './editor/editor';
+import { makeMinigame, newSeed, type MinigameId } from './game/minigames';
 import type { LevelData } from './level-format';
 import { CAMPAIGN } from './levels';
 import { Menu } from './menu';
@@ -40,6 +41,7 @@ class App {
     this.open(() => new Menu(this.a, {
       play: d => this.play(d),
       playCampaign: i => this.playCampaign(i),
+      playMinigame: id => this.playMinigame(id),
       edit: (d, id) => this.edit(d, id),
       host: (session, d, name) => this.online(d, { role: 'host', session, name }),
       joined: (session, d, me) => this.online(d, { role: 'guest', session, me }),
@@ -64,6 +66,16 @@ class App {
       backLabel: 'MENU',
       onBack: () => this.menu(),
       campaign: { id: level.id, number: i + 1, total: CAMPAIGN.length, onNext: hasNext ? () => this.playCampaign(i + 1) : undefined },
+    }));
+  }
+
+  /** A minigame in a new maze; "again" makes another new one. */
+  playMinigame(id: MinigameId) {
+    const data = makeMinigame(id, newSeed());
+    this.open(() => new Play(this.a, data, {
+      backLabel: 'MENU',
+      onBack: () => this.menu(),
+      minigame: { id, onAgain: () => this.playMinigame(id) },
     }));
   }
 
