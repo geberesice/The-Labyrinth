@@ -34,7 +34,13 @@ export interface Scene {
   openGates: Set<LiveThing>;
   /** the floor is red: which tiles flash (about to turn red) or are red right now */
   floor?: (x: number, y: number) => 'warn' | 'red' | null;
+  /** whack a meerkat: the holes, and the meerkats popping out of them */
+  holes?: { x: number; y: number }[];
+  moles?: Mole[];
 }
+
+/** A meerkat in a hole: rise 0 (hidden) to 1 (all the way up). */
+export interface Mole { x: number; y: number; kind: 'normal' | 'gold' | 'spiky'; skin: number; rise: number; whacked: boolean; t: number }
 
 export class WorldRenderer {
   constructor(private a: Assets, private level: Level) {}
@@ -53,12 +59,14 @@ export class WorldRenderer {
         if (hot) this.hotFloor(ctx, x, y, hot, time);
       }
     }
+    for (const h of scene.holes ?? []) this.hole(ctx, h.x, h.y);
     // --- depth pass: row by row, walls/blocks first, then things and actors standing in that row ---
     const byRow = new Map<number, (() => void)[]>();
     const add = (row: number, fn: () => void) => { if (!byRow.has(row)) byRow.set(row, []); byRow.get(row)!.push(fn); };
     for (const th of scene.things) if (!th.gone) add(th.y, () => this.thing(ctx, th, time, scene));
     for (const ac of actors) add(Math.floor(ac.y + 0.5), () => this.actor(ctx, ac));
     for (const p of particles) add(Math.floor(p.y + 0.5), () => this.particle(ctx, p));
+    for (const m of scene.moles ?? []) add(m.y, () => this.mole(ctx, m));
     for (let y = 0; y < level.height; y++) {
       for (let x = 0; x < level.width; x++) if (level.tiles[y][x] === 'wall') this.wall(ctx, x, y);
       for (const fn of byRow.get(y) ?? []) fn();
@@ -129,6 +137,42 @@ export class WorldRenderer {
       const bx = px + 3 + ((h >>> (i * 5 + 3)) % 10), by = py + 12 - Math.floor(phase * 9);
       ctx.fillStyle = phase < 0.8 ? '#ffb84a' : '#fff4d6';
       ctx.fillRect(bx, by, phase < 0.8 ? 2 : 1, phase < 0.8 ? 2 : 1);
+    }
+  }
+
+  /** A hole in the sand: a dark pit with a dirt rim. */
+  private hole(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    const cx = x * TILE + 8, cy = y * TILE + 10;
+    ctx.fillStyle = '#b07040';
+    ctx.beginPath(); ctx.ellipse(cx, cy, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2b1a12';
+    ctx.beginPath(); ctx.ellipse(cx, cy, 5.5, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  /** A meerkat popping out of its hole (gold ones shine, the spiky one sits in its spiky ball). */
+  private mole(ctx: CanvasRenderingContext2D, m: Mole) {
+    const cx = m.x * TILE + 8, cy = m.y * TILE + 10;
+    const sink = Math.round((1 - m.rise) * 22);
+    if (m.kind === 'gold' && !m.whacked) {
+      ctx.fillStyle = `rgba(255, 210, 74, ${0.3 + 0.15 * Math.sin(m.t * 10)})`;
+      ctx.beginPath(); ctx.arc(cx, cy - 10 + sink, 11, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.save();
+    ctx.beginPath(); ctx.rect(cx - 20, cy - 40, 40, 40); ctx.clip(); // only what is above the hole shows
+    drawMeerkat(ctx, this.a.meerkats[m.kind === 'gold' ? 4 : m.skin], m.whacked ? 'sad' : m.kind === 'gold' ? 'cheer' : 'sentry', 'down', m.t, cx, cy + 4 + sink);
+    if (m.kind === 'gold' && !m.whacked) { ctx.globalAlpha = 0.35; ctx.fillStyle = '#ffd24a'; ctx.fillRect(cx - 6, cy - 18 + sink, 12, 18); ctx.globalAlpha = 1; }
+    if (m.kind === 'spiky') this.spikyBall(ctx, cx, cy - 8 + sink, m.t);
+    ctx.restore();
+    // front of the rim, over the meerkat's body
+    ctx.fillStyle = '#b07040';
+    ctx.beginPath(); ctx.ellipse(cx, cy, 7, 4, 0, 0, Math.PI); ctx.fill();
+    if (m.whacked && m.rise > 0.2) {
+      // dizzy stars going round its head
+      for (let i = 0; i < 3; i++) {
+        const a = m.t * 8 + (i * Math.PI * 2) / 3;
+        ctx.fillStyle = i % 2 ? '#fff4d6' : '#ffd24a';
+        ctx.fillRect(Math.round(cx + Math.cos(a) * 6) - 1, Math.round(cy - 20 + sink + Math.sin(a) * 2), 2, 2);
+      }
     }
   }
 

@@ -5,7 +5,7 @@ import {
   addPlayer, createGame, nearBars, playerPos, removePlayer, RULES, step,
   type Dir, type Game, type GameEvent, type LiveThing, type Player,
 } from './game/state';
-import { distanceMap, FLOOR_RULES, floorAt, heat, HEAT, waveAt, type MinigameId } from './game/minigames';
+import { distanceMap, FLOOR_RULES, floorAt, heat, HEAT, waveAt, whackHoles, type MinigameId } from './game/minigames';
 import { canTalk, type Level, type Npc } from './level';
 import { toLevel, type LevelData } from './level-format';
 import { drawMapView } from './mapview';
@@ -14,12 +14,12 @@ import { applySnapshot, snapshot, type HostMsg } from './net/protocol';
 import type { GuestSession, HostSession } from './net/session';
 import { drawText, GLYPH_ADVANCE } from './pixelfont';
 import { loadProgress, recordWin } from './progress';
-import { drawBubble, LIFT, TILE, WorldRenderer, type Actor, type Particle } from './renderer';
+import { drawBubble, LIFT, TILE, WorldRenderer, type Actor, type Mole, type Particle } from './renderer';
 
 const SENTRY_AFTER = 3; // seconds standing still before the meerkat stands up on lookout
 const VIEW_TILES = 11; // about how many tiles fit in the short side of the screen
 const STAR_VIEW_TILES = 16; // with star power the camera zooms out to show more of the way
-const FLOOR_VIEW_TILES = 13.5; // the floor is red: the whole square fits on the screen
+const FLOOR_VIEW_TILES = 13.5; // the floor is red and whack a meerkat: the whole square fits on the screen
 const SNAP_EVERY = 0.05; // host sends the game state 20 times a second
 const params = new URLSearchParams(location.search);
 const NO_FOG = params.get('fog') === '0'; // debug: ?fog=0 lights up the whole maze
@@ -94,6 +94,9 @@ export class Play {
   // minigames
   private lastTimerSecond = -1;
   private lastWave: unknown = null;
+  /** whack a meerkat: the holes, and how many meerkats have popped up so far (each one squeaks) */
+  private holes: { x: number; y: number }[] = [];
+  private popsUp = 0;
   /** find the key: steps to the key (or the exit) from everywhere, worked out once per target */
   private heatMap: { target: string; steps: Int32Array; far: number } | null = null;
   heatLevel = -1;
@@ -158,7 +161,10 @@ export class Play {
     this.showMap = false;
     this.fog.update(this.level.start.x, this.level.start.y, { gates: this.gates(), clear: NO_FOG });
     this.talking.clear();
-    this.normalView = this.level.minigame === 'floor-is-red' ? FLOOR_VIEW_TILES : VIEW_TILES;
+    const square = this.level.minigame === 'floor-is-red' || this.level.minigame === 'whack-a-meerkat';
+    this.normalView = square ? FLOOR_VIEW_TILES : VIEW_TILES;
+    this.holes = this.level.minigame === 'whack-a-meerkat' ? whackHoles(this.level) : [];
+    this.popsUp = 0;
     this.viewTiles = this.normalView;
     this.heatMap = null; this.heatLevel = -1; this.newBest = false;
     this.lastTimerSecond = -1; this.lastWave = null;
@@ -382,6 +388,9 @@ export class Play {
       const wave = waveAt(g.waves, g.time) ?? null;
       if (wave !== this.lastWave) { this.lastWave = wave; if (wave) audio.beep(0.7, 0.12); }
       if (g.mini.id === 'find-the-key' && me) this.updateHeat(me);
+      // whack a meerkat: a squeak when one pops up
+      const up = g.pops.filter(p => p.upAt <= g.time).length;
+      if (up > this.popsUp) { this.popsUp = up; audio.play('click', 0.35, 1.4 + Math.random() * 0.4); }
     }
 
     // gems twinkle every now and then
@@ -469,6 +478,17 @@ export class Play {
         pop(mine || !this.multiplayer ? 'OUT!' : `${who} IS OUT!`, '#ff5a4a');
         if (mine) { this.shake = 0.4; audio.play('jail', 0.6); } else audio.play('alert', 0.4);
         break;
+      case 'whack':
+        if (ev.kind === 'spiky') {
+          pop(g0(ev.amount), '#ff5a4a'); pop('OUCH! SPIKY!', '#ff8a8a', ev.x, ev.y - 0.7);
+          if (mine) { this.shake = 0.35; audio.play('alert', 0.55); }
+        } else {
+          pop(ev.kind === 'gold' ? `+${ev.amount} GOLD!` : 'BONK!', ev.kind === 'gold' ? '#ffd24a' : '#fff4d6');
+          if (ev.kind === 'gold') twinkle(0.6);
+          this.particles.push({ kind: 'dust', x: ev.x, y: ev.y, t: 0 });
+          sfx(() => { audio.play('push', 0.55, 1.3); audio.play(ev.kind === 'gold' ? 'gem' : 'coin', 0.5); });
+        }
+        break;
       case 'lost':
         audio.music(null);
         audio.play('jail', 0.6);
@@ -522,6 +542,21 @@ export class Play {
     return this.game.things.filter((t): t is LiveThing & { kind: 'gate' } => t.kind === 'gate');
   }
 
+  /** Whack a meerkat: the meerkats in their holes right now, rising, up, bonked or going back down. */
+  private moles(): Mole[] {
+    const g = this.game, t = g.time, ramp = (v: number) => Math.max(0, Math.min(1, v));
+    const out: Mole[] = [];
+    for (const p of g.pops) {
+      if (t < p.upAt) break; // they are in order
+      const rise = p.whackedAt !== null
+        ? 1 - ramp((t - p.whackedAt - 0.4) / 0.25)
+        : Math.min(ramp((t - p.upAt) / 0.15), ramp((p.downAt - (this.ended ? Math.min(t, this.endedAt) : t)) / 0.15));
+      if (rise <= 0) continue;
+      out.push({ x: p.x, y: p.y, kind: p.kind, skin: p.skin, rise, whacked: p.whackedAt !== null, t: t - p.upAt });
+    }
+    return out;
+  }
+
   /** Gates next to (or under) our meerkat holding their key turn see-through. */
   openGates(): Set<LiveThing> {
     const p = this.meP;
@@ -560,6 +595,8 @@ export class Play {
     const scene = {
       things: g.things, barsOpen: g.barsOpen, openGates: this.openGates(),
       floor: g.waves.length && !this.ended ? (x: number, y: number) => floorAt(level, g.waves, g.time, x, y) : undefined,
+      holes: this.holes,
+      moles: this.moles(),
     };
     // the red floor just got you: blink for a moment
     const blink = (id: number) => { const p = g.players.find(q => q.id === id); return !!p && p.hurtLeft > 0 && Math.floor(g.time * 10) % 2 === 0; };
@@ -774,6 +811,10 @@ export class Play {
     } else if (mini?.id === 'floor-is-red') {
       title = meWon && !me?.out ? 'YOU SURVIVED!' : `${name} SURVIVED!`;
       stats = [coins, [`HEARTS LEFT  ${me?.lives ?? 0}`, '#ff8a8a']];
+    } else if (mini?.id === 'whack-a-meerkat') {
+      title = 'TIME IS UP!';
+      const bonked = g.pops.filter(p => p.whackedAt !== null && p.kind !== 'spiky').length;
+      stats = [coins, [`MEERKATS BONKED  ${bonked}`, '#ffd24a']];
     } else if (mini?.id === 'coin-rush') {
       title = g.wonAt < mini.timeLimit ? 'YOU GOT THEM ALL!' : 'TIME IS UP!';
       stats = [coins, gems, time];
@@ -787,7 +828,7 @@ export class Play {
     const again = !this.canRestart() ? 'WAITING FOR THE HOST TO PLAY AGAIN'
       : c?.onNext ? `ENTER: LEVEL ${c.number + 1}   R: AGAIN   ESC: MENU`
       : lastLevel ? 'YOU FINISHED ALL 10 LEVELS!   R: AGAIN   ESC: MENU'
-      : this.opts.minigame ? `ENTER: ${mini?.id === 'floor-is-red' ? 'PLAY AGAIN' : 'NEW MAZE'}   ESC: MENU`
+      : this.opts.minigame ? `ENTER: ${this.holes.length || mini?.id === 'floor-is-red' ? 'PLAY AGAIN' : 'NEW MAZE'}   ESC: MENU`
       : 'PRESS ENTER OR TAP TO PLAY AGAIN';
     const lines: [string, string, number][] = [
       [title.toUpperCase(), titleColor, 1.5],
@@ -811,6 +852,9 @@ export class Play {
     screen.globalAlpha = 1;
   }
 }
+
+/** "-3" for a coin loss shown as a popup */
+const g0 = (amount: number) => (amount < 0 ? `${amount}` : `+${amount}`);
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60);

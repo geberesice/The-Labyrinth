@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  distanceMap, floorAt, floorWaves, FLOOR_RULES, heat, makeMinigame, MINIGAMES, minigameInfo,
+  distanceMap, floorAt, floorWaves, FLOOR_RULES, heat, makeMinigame, MINIGAMES, minigameInfo, popAt, whackHoles, WHACK_RULES,
 } from '../src/game/minigames';
 import { createGame, RULES, step, type Game } from '../src/game/state';
 import { parseLevel } from '../src/level';
@@ -16,7 +16,9 @@ describe('minigame levels', () => {
   it('the same seed makes the same level, another seed another one', () => {
     for (const m of MINIGAMES) {
       expect(makeMinigame(m.id, 7)).toEqual(makeMinigame(m.id, 7));
-      expect(makeMinigame(m.id, 7).rows).not.toEqual(makeMinigame(m.id, 8).rows);
+      // whack a meerkat always has the same square; its meerkats pop up differently
+      if (m.id === 'whack-a-meerkat') expect(createGame(toLevel(makeMinigame(m.id, 7))).pops).not.toEqual(createGame(toLevel(makeMinigame(m.id, 8))).pops);
+      else expect(makeMinigame(m.id, 7).rows).not.toEqual(makeMinigame(m.id, 8).rows);
     }
   });
 
@@ -122,6 +124,82 @@ describe('the floor is red', () => {
     wait(g, 0.6);
     expect(g.players[1].out).toBe(true);
     expect(g.lost).toBe(false);
+  });
+});
+
+describe('whack a meerkat', () => {
+  const lvl = toLevel(makeMinigame('whack-a-meerkat', 6));
+  /** A game with just one meerkat, popping up in the hole right of the start. */
+  function oneMeerkat(kind: 'normal' | 'gold' | 'spiky') {
+    const g = createGame(lvl);
+    const hole = whackHoles(lvl).find(h => h.y === lvl.start.y && h.x > lvl.start.x)!;
+    g.pops = [{ ...hole, kind, skin: 1, upAt: 0, downAt: 30, whackedAt: null }];
+    return { g, steps: hole.x - lvl.start.x };
+  }
+  const walkRight = (g: Game, tiles: number) => {
+    for (let i = 0; i < tiles; i++) { step(g, ['right'], DT); for (let t = 0; g.players[0].stepT < 1 && t < 2; t += DT) step(g, [null], DT); }
+  };
+
+  it('12 holes on the floor, none on the start', () => {
+    const holes = whackHoles(lvl);
+    expect(holes).toHaveLength(12);
+    for (const h of holes) expect(lvl.tiles[h.y][h.x]).toBe('floor');
+    expect(holes.some(h => h.x === lvl.start.x && h.y === lvl.start.y)).toBe(false);
+  });
+
+  it('meerkats pop up all game long, one at a time per hole, faster later', () => {
+    for (const seed of SEEDS) {
+      const g = createGame(toLevel(makeMinigame('whack-a-meerkat', seed)));
+      expect(g.pops.length).toBeGreaterThan(40);
+      expect(g.pops[0].upAt).toBe(WHACK_RULES.grace);
+      expect(g.pops.some(p => p.kind === 'spiky')).toBe(true);
+      expect(g.pops.some(p => p.kind === 'gold')).toBe(true);
+      for (const a of g.pops) for (const b of g.pops) {
+        if (a !== b && a.x === b.x && a.y === b.y) expect(a.downAt <= b.upAt || b.downAt <= a.upAt).toBe(true);
+      }
+      const first = g.pops.slice(0, 5), last = g.pops.slice(-5);
+      const len = (ps: typeof first) => ps.reduce((n, p) => n + p.downAt - p.upAt, 0) / ps.length;
+      expect(len(last)).toBeLessThan(len(first));
+    }
+  });
+
+  it('stepping onto a meerkat bonks it: +1 coin, and it can not be bonked twice', () => {
+    const { g, steps } = oneMeerkat('normal');
+    walkRight(g, steps);
+    expect(g.coins).toBe(WHACK_RULES.normal);
+    expect(g.pops[0].whackedAt).not.toBe(null);
+    expect(popAt(g.pops, g.time, g.pops[0].x, g.pops[0].y)).toBeUndefined();
+    walkRight(g, 1);
+    step(g, ['left'], DT); wait(g, 0.3);
+    expect(g.coins).toBe(WHACK_RULES.normal);
+  });
+
+  it('gold ones give 5 coins, the spiky one takes 3 (never below 0)', () => {
+    const gold = oneMeerkat('gold');
+    walkRight(gold.g, gold.steps);
+    expect(gold.g.coins).toBe(WHACK_RULES.gold);
+    const spiky = oneMeerkat('spiky');
+    spiky.g.coins = 2;
+    walkRight(spiky.g, spiky.steps);
+    expect(spiky.g.coins).toBe(0);
+  });
+
+  it('an empty hole does nothing, and the game is won when the time is up', () => {
+    const g = createGame(lvl);
+    g.pops = [];
+    walkRight(g, 3);
+    expect(g.coins).toBe(0);
+    wait(g, 60.1);
+    expect(g.won).toBe(true);
+  });
+
+  it('friends see which meerkats were bonked', () => {
+    const { g } = oneMeerkat('normal');
+    g.pops[0].whackedAt = 1.5;
+    const guest = createGame(lvl);
+    guest.pops = g.pops.map(p => ({ ...p, whackedAt: null }));
+    applySnapshot(guest, JSON.parse(JSON.stringify(snapshot(g, []))));
+    expect(guest.pops[0].whackedAt).toBe(1.5);
   });
 });
 

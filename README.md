@@ -45,6 +45,7 @@ Choose **Minigames** on the menu for quick games with a new maze every time (the
 | Find the Key | The exit is right next to you, but locked. The key is hidden far away in the dark. **HOT** / **COLD** at the top tells you how close you are. 3 minutes! |
 | The Floor Is Red | Parts of the floor flash, then turn red. Don't be standing there! Red floor costs a heart (you have 3). Last 60 seconds to win. |
 | Coin Rush | Grab as many coins as you can in 60 seconds. |
+| Whack a Meerkat | Meerkats pop out of 12 holes. Step on one to bonk it (+1 coin); gold ones give 5. Never bonk the meerkat in the spiky ball: it costs 3 coins! 60 seconds. |
 
 Your best time (Find the Key) or most coins are kept on the Minigames list.
 

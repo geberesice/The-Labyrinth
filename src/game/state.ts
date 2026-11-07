@@ -1,7 +1,9 @@
 // Game rules. Pure logic, no drawing, so it can be unit tested and later run by the multiplayer host.
 import type { KeyColor } from '../assets';
 import { isWall, type Level, type Thing } from '../level';
-import { floorAt, floorWaves, FLOOR_RULES, minigameInfo, type FloorWave, type MinigameInfo } from './minigames';
+import {
+  floorAt, floorWaves, FLOOR_RULES, minigameInfo, popAt, whackPops, WHACK_RULES, type FloorWave, type MinigameInfo, type Pop, type PopKind,
+} from './minigames';
 
 export type Dir = 'up' | 'down' | 'left' | 'right';
 export const DIRS: Record<Dir, [number, number]> = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -61,7 +63,8 @@ export type GameEvent =
   | { type: 'gate'; x: number; y: number; player: number; color: KeyColor }
   | { type: 'win'; player: number; x: number; y: number }
   | { type: 'burned' | 'out'; player: number; x: number; y: number }
-  | { type: 'lost'; player: number; x: number; y: number };
+  | { type: 'lost'; player: number; x: number; y: number }
+  | { type: 'whack'; player: number; x: number; y: number; kind: PopKind; amount: number };
 
 export interface Game {
   level: Level;
@@ -79,6 +82,8 @@ export interface Game {
   mini: MinigameInfo | null;
   /** the floor is red: every flash of the floor */
   waves: FloorWave[];
+  /** whack a meerkat: every meerkat that pops up */
+  pops: Pop[];
   barsOpen: boolean;
   /** cells inside the jail (behind the bars) */
   jailCells: Set<string>;
@@ -93,9 +98,10 @@ export function createGame(level: Level, playerCount = 1): Game {
     things: level.things.map((t, id) => ({ ...t, id, gone: false })),
     players: [], coins: 0, gems: 0, time: 0, won: false, wonAt: 0, lost: false, lostAt: 0, barsOpen: false,
     jailCells: findJailCells(level), events: [],
-    mini: level.minigame ? minigameInfo(level.minigame) : null, waves: [],
+    mini: level.minigame ? minigameInfo(level.minigame) : null, waves: [], pops: [],
   };
   if (g.mini?.id === 'floor-is-red') g.waves = floorWaves(level, level.seed ?? 1, RULES.stepTime, g.mini.timeLimit);
+  if (g.mini?.id === 'whack-a-meerkat') g.pops = whackPops(level, level.seed ?? 1, g.mini.timeLimit);
   for (let i = 0; i < playerCount; i++) addPlayer(g);
   return g;
 }
@@ -299,6 +305,7 @@ function endMinigame(g: Game, how: 'win' | 'lose') {
 
 /** Called when a step finishes: pick things up, reach the exit. */
 function arrive(g: Game, p: Player) {
+  if (g.mini?.id === 'whack-a-meerkat') whack(g, p);
   for (const t of thingsAt(g, p.cx, p.cy)) {
     const ev = { x: t.x, y: t.y, player: p.id };
     switch (t.kind) {
@@ -327,6 +334,17 @@ function arrive(g: Game, p: Player) {
         break;
     }
   }
+}
+
+/** Whack a meerkat: stepping into a hole with a meerkat up bonks it. */
+function whack(g: Game, p: Player) {
+  const pop = popAt(g.pops, g.time, p.cx, p.cy);
+  if (!pop) return;
+  pop.whackedAt = g.time;
+  const amount = WHACK_RULES[pop.kind];
+  g.coins = Math.max(0, g.coins + amount);
+  if (pop.kind !== 'spiky') { p.mood = 'pickup'; p.moodLeft = 0.4; }
+  g.events.push({ type: 'whack', player: p.id, x: pop.x, y: pop.y, kind: pop.kind, amount });
 }
 
 /** Is the player standing next to (or on) the jail bars? */
