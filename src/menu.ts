@@ -305,7 +305,7 @@ export class Menu {
     this.leaveLobby();
     const progress = loadProgress();
     const time = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
-    const icons: Record<MinigameId, string> = { 'find-the-key': '🔑', 'floor-is-red': '🔥', 'coin-rush': '🪙' };
+    const icons: Record<MinigameId, string> = { 'find-the-key': '🔑', 'floor-is-red': '🔥', 'coin-rush': '🪙', 'whack-a-meerkat': '🔨' };
     const items = MINIGAMES.map(m => {
       const best = progress?.[`mini:${m.id}`];
       const result = !best ? '' : m.best === 'time' ? `✓ best time ${time(best.time)}`

@@ -4,7 +4,7 @@ import type { KeyColor } from '../assets';
 import type { Dir, Game, GameEvent, Mood, Player } from '../game/state';
 import type { LevelData } from '../level-format';
 
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 
 export interface PlayerSnap {
   id: number; name: string; skin: number;
@@ -20,6 +20,8 @@ export interface Snapshot {
   time: number; coins: number; gems: number; won: boolean; wonAt: number; lost: boolean; lostAt: number; barsOpen: boolean;
   players: PlayerSnap[];
   things: ThingSnap[];
+  /** whack a meerkat: the meerkats that were bonked, as [index, time] */
+  whacked: [number, number][];
   /** things that happened since the last snapshot (for sounds and effects) */
   events: GameEvent[];
 }
@@ -48,6 +50,7 @@ export function snapshot(g: Game, events: GameEvent[]): Snapshot {
     things: g.things
       .filter(t => t.gone || t.kind === 'crate')
       .map(t => ({ id: t.id, x: t.x, y: t.y, gone: t.gone, fromX: t.fromX, fromY: t.fromY, slideT: t.slideT })),
+    whacked: g.pops.flatMap((p, i) => (p.whackedAt === null ? [] : [[i, p.whackedAt] as [number, number]])),
     events,
   };
 }
@@ -69,4 +72,6 @@ export function applySnapshot(g: Game, s: Snapshot) {
     if (ts) Object.assign(t, ts);
     else if (t.kind !== 'crate') t.gone = false;
   }
+  const whacked = new Map(s.whacked ?? []);
+  g.pops.forEach((p, i) => { p.whackedAt = whacked.get(i) ?? null; });
 }

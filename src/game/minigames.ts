@@ -2,11 +2,12 @@
 //   Find the Key      the exit is locked: find the key in the dark (hot / cold tells you how close you are)
 //   The Floor Is Red  parts of the floor flash, then turn red. Don't be standing there! Last 60 seconds.
 //   Coin Rush         grab as many coins as you can in 60 seconds.
+//   Whack a Meerkat   meerkats pop out of holes: step on them to bonk them, but not the spiky one!
 // Pure logic, no DOM: the levels are made from a seed, so host and friends build the same one.
 import type { LevelData } from '../level-format';
 import { isWall, type Level } from '../level';
 
-export type MinigameId = 'find-the-key' | 'floor-is-red' | 'coin-rush';
+export type MinigameId = 'find-the-key' | 'floor-is-red' | 'coin-rush' | 'whack-a-meerkat';
 
 export interface MinigameInfo {
   id: MinigameId;
@@ -35,6 +36,10 @@ export const MINIGAMES: MinigameInfo[] = [
     id: 'coin-rush', name: 'Coin Rush', goal: 'GRAB THE COINS!', timeLimit: 60, timeUp: 'win', best: 'coins',
     blurb: 'As many coins as you can in 60 seconds. Go go go!',
   },
+  {
+    id: 'whack-a-meerkat', name: 'Whack a Meerkat', goal: 'WHACK A MEERKAT!', timeLimit: 60, timeUp: 'win', best: 'coins',
+    blurb: 'Meerkats pop out of holes. Step on them to bonk them! Gold ones give 5 coins. Never bonk the spiky one!',
+  },
 ];
 
 export function minigameInfo(id: MinigameId): MinigameInfo {
@@ -51,6 +56,13 @@ export const FLOOR_RULES = {
   grace: 3, // seconds before the first flash
 };
 
+export const WHACK_RULES = {
+  normal: 1, // coins for bonking a meerkat
+  gold: 5,
+  spiky: -3, // bonking the spiky one costs coins (never below 0)
+  grace: 2, // seconds before the first meerkat pops up
+};
+
 /** A new random seed for a new maze. */
 export function newSeed(): number {
   return 1 + Math.floor(Math.random() * 2 ** 31);
@@ -62,6 +74,7 @@ export function makeMinigame(id: MinigameId, seed: number): LevelData {
     case 'find-the-key': return findTheKey(seed);
     case 'floor-is-red': return floorIsRed(seed);
     case 'coin-rush': return coinRush(seed);
+    case 'whack-a-meerkat': return whackAMeerkat(seed);
   }
 }
 
@@ -190,6 +203,15 @@ function coinRush(seed: number): LevelData {
   return { version: 1, name: 'Coin Rush', rows: g.map(r => r.join('')), texts: [], settings: { fogRadius: 5.5, minigame: 'coin-rush', seed } };
 }
 
+/** Whack a Meerkat: an open sandy square with 12 holes (where they are: whackHoles). */
+function whackAMeerkat(seed: number): LevelData {
+  const W = 15, H = 11;
+  const g: Grid = Array.from({ length: H }, (_, y) => Array.from({ length: W }, (_, x) =>
+    x === 0 || y === 0 || x === W - 1 || y === H - 1 ? '#' : '.'));
+  g[5][7] = 'S';
+  return { version: 1, name: 'Whack a Meerkat', rows: g.map(r => r.join('')), texts: [], settings: { fogRadius: 30, minigame: 'whack-a-meerkat', seed } };
+}
+
 // ---------------- the floor is red ----------------
 
 /** One flash of the floor: `red` tiles flash from warnAt, are red from redAt and cool down at endAt. */
@@ -267,6 +289,58 @@ export function floorAt(level: Level, waves: readonly FloorWave[], time: number,
   const w = waveAt(waves, time);
   if (!w || x < 0 || y < 0 || x >= level.width || y >= level.height || !w.red[y * level.width + x]) return null;
   return time >= w.redAt ? 'red' : 'warn';
+}
+
+// ---------------- whack a meerkat ----------------
+
+/** The holes meerkats pop out of: 4 across, 3 down, around the start. */
+export function whackHoles(level: Level): { x: number; y: number }[] {
+  const holes: { x: number; y: number }[] = [];
+  const cx = Math.floor(level.width / 2), cy = Math.floor(level.height / 2);
+  for (const dy of [-3, 0, 3]) for (const dx of [-5, -2, 2, 5]) {
+    const x = cx + dx, y = cy + dy;
+    if (!isWall(level, x, y) && !(x === level.start.x && y === level.start.y)) holes.push({ x, y });
+  }
+  return holes;
+}
+
+export type PopKind = 'normal' | 'gold' | 'spiky';
+
+/** One meerkat popping out of a hole from upAt to downAt. whackedAt is set when someone bonks it. */
+export interface Pop { x: number; y: number; kind: PopKind; skin: number; upAt: number; downAt: number; whackedAt: number | null }
+
+/**
+ * Every meerkat of a Whack a Meerkat game, worked out at the start from the seed (so friends get
+ * the same ones). They pop up more often and stay up shorter as time goes on; a hole only has one
+ * meerkat at a time.
+ */
+export function whackPops(level: Level, seed: number, duration: number): Pop[] {
+  const rnd = random(seed * 13 + 5);
+  const holes = whackHoles(level);
+  const freeAt = holes.map(() => 0);
+  const pops: Pop[] = [];
+  let t = WHACK_RULES.grace;
+  while (t < duration - 0.5 && holes.length) {
+    const k = Math.min(1, t / duration);
+    const together = k > 0.4 && rnd() < 0.35 ? 2 : 1; // later, sometimes two at once
+    for (let n = 0; n < together; n++) {
+      const free = holes.map((_, i) => i).filter(i => freeAt[i] <= t);
+      if (!free.length) break;
+      const i = free[Math.floor(rnd() * free.length)];
+      const up = 1.7 - 0.8 * k + rnd() * 0.3;
+      const r = rnd();
+      const kind: PopKind = r < 0.1 + 0.1 * k ? 'spiky' : r < 0.18 + 0.1 * k ? 'gold' : 'normal';
+      pops.push({ ...holes[i], kind, skin: 1 + Math.floor(rnd() * 4), upAt: t, downAt: t + up, whackedAt: null });
+      freeAt[i] = t + up + 0.4;
+    }
+    t += 0.95 - 0.5 * k + rnd() * 0.25;
+  }
+  return pops;
+}
+
+/** The meerkat up in hole (x, y) at `time` that nobody has bonked yet, if any. */
+export function popAt(pops: readonly Pop[], time: number, x: number, y: number): Pop | undefined {
+  return pops.find(p => p.x === x && p.y === y && p.whackedAt === null && time >= p.upAt && time < p.downAt);
 }
 
 // ---------------- find the key: hot or cold ----------------
