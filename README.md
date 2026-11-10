@@ -55,8 +55,8 @@ Your best time (Find the Key) or most coins are kept on the Minigames list.
 |---|---|
 | Orange coin | +1 coin |
 | Blue gem | worth 5 coins |
-| Coloured key | yours for the whole level; walk through gates of the same colour |
-| Coloured block with a keyhole | a gate: only meerkats with the matching key get through |
+| Coloured key | the team's for the whole level (with friends, everyone gets it); walk through gates of the same colour |
+| Coloured block with a keyhole | a gate: it needs the matching key, and disappears once it has been opened |
 | Crate with arrows | push it (if there is free floor behind it) |
 | Red star | 20 seconds of double speed; the whole maze is lit and the view zooms out |
 | Red dotted zone | you may stay 5 seconds; any longer and you go to jail |

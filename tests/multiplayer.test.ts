@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addPlayer, createGame, RULES, step, type Dir, type Game } from '../src/game/state';
 import { parseLevel } from '../src/level';
+import { applySnapshot, snapshot } from '../src/net/protocol';
 
 const DT = 1 / 60;
 
@@ -30,13 +31,25 @@ describe('playing together', () => {
     expect(at(g, 1)).toEqual([3, 1]);
   });
 
-  it('a key belongs to whoever picked it up; it is gone for the others', () => {
-    const g = createGame(parseLevel('t', ['#######', '#SyY..#', '#######'], []), 2);
-    walk(g, 0, 'right', 3);
-    expect(at(g, 0)).toEqual([4, 1]);
-    walk(g, 1, 'right', 3);
-    expect(at(g, 1)).toEqual([2, 1]); // stopped at the gate: no key
-    expect(g.players[1].keys.size).toBe(0);
+  it('keys are shared: a key one meerkat finds is the whole team\'s', () => {
+    const g = createGame(parseLevel('t', ['#######', '#SyY..#', '#.##.##', '#.Y..##', '#######'], []), 2);
+    walk(g, 0, 'right'); // player 0 picks up the yellow key
+    expect(g.players[1].keys.has('yellow')).toBe(true);
+    walk(g, 1, 'down', 2); walk(g, 1, 'right', 3); // player 1 goes through the other gate
+    expect(at(g, 1)).toEqual([4, 3]);
+  });
+
+  it('friends who join later have the team\'s keys too', () => {
+    const g = createGame(parseLevel('t', ['######', '#SyY.#', '######'], []));
+    walk(g, 0, 'right');
+    expect(addPlayer(g).keys.has('yellow')).toBe(true);
+  });
+
+  it('a gate disappears once a key opens it', () => {
+    const g = createGame(parseLevel('t', ['######', '#SyY.#', '######'], []), 2);
+    walk(g, 0, 'right', 2);
+    const gate = g.things.find(t => t.kind === 'gate')!;
+    expect(gate.gone).toBe(true);
   });
 
   it('coins go into the team total', () => {
@@ -96,5 +109,37 @@ describe('jail with friends', () => {
     wait(g, RULES.rescueSeconds + 0.5);
     expect(g.players[0].jailLeft).toBeNull();
     expect(g.barsOpen).toBe(true);
+  });
+});
+
+describe('snapshots for guests', () => {
+  // PeerJS's binary format turns `undefined` into `null`; mimic that
+  const overTheWire = <T>(v: T): T => JSON.parse(JSON.stringify(v, (_k, x) => (x === undefined ? null : x)));
+
+  it('crates that never moved stay where they are on the guest', () => {
+    const lvl = parseLevel('t', ['#######', '#S....#', '#..m..#', '#######'], []);
+    const host = createGame(lvl), guest = createGame(lvl);
+    applySnapshot(guest, overTheWire(snapshot(host, [])));
+    const crate = guest.things.find(t => t.kind === 'crate')!;
+    expect([crate.x, crate.y]).toEqual([3, 2]);
+    expect(crate.slideT).toBe(1); // not "sliding" from tile 0,0
+  });
+
+  it('a pushed crate shows up where the host pushed it', () => {
+    const lvl = parseLevel('t', ['#######', '#Sm...#', '#######'], []);
+    const host = createGame(lvl), guest = createGame(lvl);
+    walk(host, 0, 'right');
+    applySnapshot(guest, overTheWire(snapshot(host, [])));
+    const crate = guest.things.find(t => t.kind === 'crate')!;
+    expect([crate.x, crate.y, crate.slideT]).toEqual([3, 1, 1]);
+  });
+
+  it('opened gates and shared keys reach the guest', () => {
+    const lvl = parseLevel('t', ['######', '#SyY.#', '######'], []);
+    const host = createGame(lvl, 2), guest = createGame(lvl, 2);
+    walk(host, 0, 'right', 2);
+    applySnapshot(guest, overTheWire(snapshot(host, [])));
+    expect(guest.things.find(t => t.kind === 'gate')!.gone).toBe(true);
+    expect(guest.players.every(p => p.keys.has('yellow'))).toBe(true);
   });
 });

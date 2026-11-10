@@ -4,7 +4,7 @@ import type { KeyColor } from '../assets';
 import type { Dir, Game, GameEvent, Mood, Player } from '../game/state';
 import type { LevelData } from '../level-format';
 
-export const PROTOCOL = 3;
+export const PROTOCOL = 4;
 
 export interface PlayerSnap {
   id: number; name: string; skin: number;
@@ -14,7 +14,7 @@ export interface PlayerSnap {
   lives: number; hurtLeft: number; out: boolean;
 }
 
-export interface ThingSnap { id: number; x: number; y: number; gone: boolean; fromX?: number; fromY?: number; slideT?: number }
+export interface ThingSnap { id: number; x: number; y: number; gone: boolean; fromX: number; fromY: number; slideT: number }
 
 export interface Snapshot {
   time: number; coins: number; gems: number; won: boolean; wonAt: number; lost: boolean; lostAt: number; barsOpen: boolean;
@@ -49,7 +49,8 @@ export function snapshot(g: Game, events: GameEvent[]): Snapshot {
     // only things that can change: picked-up items and crates
     things: g.things
       .filter(t => t.gone || t.kind === 'crate')
-      .map(t => ({ id: t.id, x: t.x, y: t.y, gone: t.gone, fromX: t.fromX, fromY: t.fromY, slideT: t.slideT })),
+      // always real numbers: PeerJS sends `undefined` as `null`, and a null slide drew crates at the map's corner
+      .map(t => ({ id: t.id, x: t.x, y: t.y, gone: t.gone, fromX: t.fromX ?? t.x, fromY: t.fromY ?? t.y, slideT: t.slideT ?? 1 })),
     whacked: g.pops.flatMap((p, i) => (p.whackedAt === null ? [] : [[i, p.whackedAt] as [number, number]])),
     events,
   };
@@ -58,18 +59,24 @@ export function snapshot(g: Game, events: GameEvent[]): Snapshot {
 /** Copy a snapshot into the guest's local copy of the game. */
 export function applySnapshot(g: Game, s: Snapshot) {
   g.time = s.time; g.coins = s.coins; g.gems = s.gems; g.won = s.won; g.wonAt = s.wonAt; g.lost = s.lost; g.lostAt = s.lostAt; g.barsOpen = s.barsOpen;
+  // keys are shared: one set for the whole team, like on the host
+  g.keys = new Set(s.players.flatMap(ps => ps.keys));
   const old = new Map(g.players.map(p => [p.id, p]));
   g.players = s.players.map(ps => {
     const p: Player = old.get(ps.id) ?? ({} as Player);
     // keep our smoother local step progress if we are already further along the same step
     const sameStep = p.cx === ps.cx && p.cy === ps.cy && p.fromX === ps.fromX && p.fromY === ps.fromY;
     const stepT = sameStep ? Math.max(p.stepT ?? 0, ps.stepT) : ps.stepT;
-    return Object.assign(p, ps, { keys: new Set(ps.keys), stepT, moodLeft: ps.moodLeft >= 9999 ? Infinity : ps.moodLeft });
+    return Object.assign(p, ps, { keys: g.keys, stepT, moodLeft: ps.moodLeft >= 9999 ? Infinity : ps.moodLeft });
   });
   const byId = new Map(s.things.map(t => [t.id, t]));
   for (const t of g.things) {
     const ts = byId.get(t.id);
-    if (ts) Object.assign(t, ts);
+    if (ts) {
+      // a crate already sliding here keeps its smoother local progress
+      const sameSlide = t.x === ts.x && t.y === ts.y && t.fromX === ts.fromX && t.fromY === ts.fromY;
+      Object.assign(t, ts, { slideT: sameSlide ? Math.max(t.slideT ?? 0, ts.slideT) : ts.slideT });
+    }
     else if (t.kind !== 'crate') t.gone = false;
   }
   const whacked = new Map(s.whacked ?? []);
