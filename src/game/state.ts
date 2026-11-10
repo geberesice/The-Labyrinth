@@ -32,6 +32,7 @@ export interface Player {
   /** 0..1 progress of the current step (1 = standing still) */
   stepT: number;
   dir: Dir;
+  /** the team's keys: the same set for every player (a key one meerkat finds opens gates for all) */
   keys: Set<KeyColor>;
   /** seconds spent in the current red zone, or null when outside */
   zoneTime: number | null;
@@ -72,6 +73,8 @@ export interface Game {
   players: Player[];
   coins: number;
   gems: number;
+  /** keys the team has found, shared by every player */
+  keys: Set<KeyColor>;
   time: number;
   won: boolean;
   wonAt: number;
@@ -96,7 +99,7 @@ export function createGame(level: Level, playerCount = 1): Game {
   const g: Game = {
     level,
     things: level.things.map((t, id) => ({ ...t, id, gone: false })),
-    players: [], coins: 0, gems: 0, time: 0, won: false, wonAt: 0, lost: false, lostAt: 0, barsOpen: false,
+    players: [], coins: 0, gems: 0, keys: new Set(), time: 0, won: false, wonAt: 0, lost: false, lostAt: 0, barsOpen: false,
     jailCells: findJailCells(level), events: [],
     mini: level.minigame ? minigameInfo(level.minigame) : null, waves: [], pops: [],
   };
@@ -112,7 +115,7 @@ export function addPlayer(g: Game, name?: string): Player {
   const { x, y } = g.level.start;
   const p: Player = {
     id, name: name ?? `Meerkat ${id + 1}`, skin: id % 5, cx: x, cy: y, fromX: x, fromY: y, stepT: 1, dir: 'down',
-    keys: new Set(), zoneTime: null, jailLeft: null, starLeft: 0, mood: 'none', moodLeft: 0, pushing: false,
+    keys: g.keys, zoneTime: null, jailLeft: null, starLeft: 0, mood: 'none', moodLeft: 0, pushing: false,
     lives: FLOOR_RULES.lives, hurtLeft: 0, out: false,
   };
   g.players.push(p);
@@ -256,7 +259,11 @@ function tryMove(g: Game, p: Player, dir: Dir) {
     p.pushing = false;
     if (!canEnter(g, p, nx, ny)) return;
     const gate = thingsAt(g, nx, ny).find(t => t.kind === 'gate');
-    if (gate && gate.kind === 'gate') g.events.push({ type: 'gate', x: nx, y: ny, player: p.id, color: gate.color });
+    if (gate && gate.kind === 'gate') {
+      // the key opens the gate for good: it disappears for everyone
+      gate.gone = true;
+      g.events.push({ type: 'gate', x: nx, y: ny, player: p.id, color: gate.color });
+    }
   }
   p.fromX = p.cx; p.fromY = p.cy;
   p.cx = nx; p.cy = ny;
@@ -318,7 +325,7 @@ function arrive(g: Game, p: Player) {
         g.events.push({ type: 'gem', amount: RULES.gem, ...ev });
         break;
       case 'key':
-        t.gone = true; p.keys.add(t.color);
+        t.gone = true; g.keys.add(t.color);
         p.mood = 'pickup'; p.moodLeft = 0.5;
         g.events.push({ type: 'key', color: t.color, ...ev });
         break;
